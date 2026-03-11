@@ -7,3 +7,5 @@ checkpoint/
 _spark_metadata/
 
 *.log
+
+.vscode
