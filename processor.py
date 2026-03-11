@@ -1,11 +1,13 @@
+import pyspark
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 
 # create the spark session and configure the kafka connector
+spark_version = pyspark.__version__
 spark = SparkSession.builder \
     .appName("FraudDetector") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0") \
+    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version}") \
     .getOrCreate()
 
 # hidden warnings (they are lame)
