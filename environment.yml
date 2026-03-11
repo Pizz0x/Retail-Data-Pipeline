@@ -1,0 +1,12 @@
+# run "conda env create -f environment.yml" to create a conda environment with the correct libraries
+name: bigdata
+channels:
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - python=3.10
+  - openjdk==17.0.18
+  - pyspark
+  - ipykernel
+  - faker
+  - python-confluent-kafka
