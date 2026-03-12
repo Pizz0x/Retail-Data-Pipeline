@@ -1,6 +1,7 @@
 import random, json, time, os
 import argparse # used to configure arguments passed when executing the script
 from confluent_kafka import Producer
+from datetime import datetime
 
 
 ### CONFIGURATION OF THE ARGUMENTS
@@ -10,11 +11,11 @@ parser = argparse.ArgumentParser(description="Checkout Simulator")
 parser.add_argument('--store', type=str, required=True, help='Store location (ex. Milan)')
 
 # we also want to specify the checkout number, indeed we can have different checkout in a single store where each of them compute receipts independently
-parser.add_argument('--checkout', type=str, required=True, help='Checkout number (ex. 01)')
+parser.add_argument('--checkout', type=str, required=True, help='Checkout number (ex. 3)')
 
 args = parser.parse_args()
 store_loc = args.store 
-checkout_n = args.checkout
+checkout_n = int(args.checkout)
 
 
 ### STATE MANAGER FOR THE CHECKOUTS
@@ -42,14 +43,62 @@ producer = Producer(conf)
 topic = "bank_transactions"
 
 # possible configurations of each article
+catalogue = {
+    'Jeans': {
+        'Skinny': 49.99, 'Slim': 59.99, 'Straight': 69.99, 'Baggy': 79.99
+    },
+    'T-Shirt': {
+        'Basic': 14.99, 'Graphic Print': 24.99, 'Oversize': 29.99, 'Polo': 34.99
+    },
+    'Sweater': {
+        'Crewneck': 39.99, 'Hoodie': 49.99, 'Zip-Up': 54.99
+    },
+    'Jacker': {
+        'Denim': 79.99, 'Bomber': 99.99, 'Puffer': 129.99, 'Leather': 199.99
+    },
+    'Shoes': {
+        'Canvas': 59.99, 'Running': 89.99, 'Chunky': 119.99, 'High-Top': 139.99
+    },
+    'Sockets': {
+        'Ankle (3-pack)': 9.99, 'Crew': 5.99, 'Sport': 12.99
+    }
+}
+size = ['XS', 'S', 'M', 'L', 'XL', '2XL']
+sex = ['F', 'M']
+
 
 def generate_receipt():
+    global current_receipt
+    current_receipt += 1
+    save_receipt(current_receipt)
+
+    store_prefix = store_loc[:3].upper()
+    receipt_id = f"{store_prefix}-{checkout_n:02d}-{current_receipt:06d}"
+
+    n_items = int(random.triangular(1, 20, 1))
+    items = []
+    total_amount = 0.0
+
+    for _ in range(n_items):
+        category = random.choice(list(catalogue.keys()))
+        model = random.choice(list(catalogue[category].keys()))
+        price = catalogue[category][model]
+
+        items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size)})
+        total_amount += price
+
+    
     receipt = {
-        "receipt_id": fake.uuid4(),
-        "card_id": f"CARD_{random.randint(1000, 1050)}",
-        "amount": round(random.uniform(0.0,500.0),2),
+        "receipt_id": receipt_id,
+        "store": store_loc,
+        "checkout": checkout_n,
+        "timestamp": datetime.now().isoformat(),
+        "total_price": round(total_amount, 2),
+        "items": items
     }
     return receipt
+
+
 
 def delivery_check(err, msg):
     if err is not None:
