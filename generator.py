@@ -75,7 +75,7 @@ def generate_receipt():
     store_prefix = store_loc[:3].upper()
     receipt_id = f"{store_prefix}-{checkout_n:02d}-{current_receipt:06d}"
 
-    n_items = int(random.triangular(1, 20, 1))
+    n_items = int(1 + (random.random()**2 * 19))
     items = []
     total_amount = 0.0
 
@@ -102,24 +102,26 @@ def generate_receipt():
 
 def delivery_check(err, msg):
     if err is not None:
-        print(f"Error in the transaction deliver: {err}")
+        print(f"Error in the receipt delivery: {err}")
     else:
-        print(f"correclty deliver to Kafka : {msg.value().decode('utf-8')}")
+        print(f"Receipt correclty deliver to Kafka : {msg.value().decode('utf-8')}")
 
+### GENERATING CYCLE
+print(f"Store: {store_loc} | Checkout: {checkout_n} | Last receipt: {current_receipt}")
 try:
     while True:
-        trans_data = generate_transaction()
-        trans_json = json.dumps(trans_data)
+        receipt = generate_receipt()
+        json_rec = json.dumps(receipt)
 
         producer.produce(
             topic = topic, # to which kafka pipeline send the data
-            value = trans_json.encode('utf-8'), # encode data that has to be sent
+            value = json_rec.encode('utf-8'), # encode data that has to be sent
             callback = delivery_check # tell us what happened when data are delivered (since kafka is asyncronous)
         )
         producer.poll(0) # check if the buffer still has data that we are sure are delivered correctly and remove them
 
-        time.sleep(random.uniform(0.2, 0.5))
+        time.sleep(random.uniform(2.0, 4.0))
 except KeyboardInterrupt:
-    print("The generator has stopped")
+    print("The Checkout has closed")
 finally:
     producer.flush() # ensure that the program doesn't stop until all data in buffer are delivered

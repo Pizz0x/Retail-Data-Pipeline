@@ -9,3 +9,5 @@ _spark_metadata/
 *.log
 
 .vscode
+
+data/
