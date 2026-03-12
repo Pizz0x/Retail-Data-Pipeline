@@ -1,7 +1,7 @@
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, explode
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, CharType, IntegerType, TimestampType, ArrayType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType
 
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
@@ -20,7 +20,7 @@ item_schema = StructType([
     StructField("category", StringType(), True),
     StructField("model", StringType(), True),
     StructField("price", DoubleType(), True),
-    StructField("sex", CharType(), True),
+    StructField("sex", StringType(), True),
     StructField("size", StringType(), True),
 ])
 
@@ -56,19 +56,19 @@ receipt_data = kafka_data \
 item_data = receipt_data \
     .select(
         "receipt_id",
-        "store_city",
+        "store",
         "checkout",
         "timestamp",
         explode(col("items")).alias("individual_article") # create a row for every article
     ) \
     .select(
         "receipt_id",
-        "store_city",
+        "store",
         "checkout",
         "timestamp",
         col("individual_article.category").alias("category"),
         col("individual_article.model").alias("model"),
-        col("individual_article.prize").alias("prize"),
+        col("individual_article.price").alias("price"),
         col("individual_article.sex").alias("sex"),
         col("individual_article.size").alias("size")
     )
@@ -78,10 +78,20 @@ item_data = receipt_data \
 #todo
 
 
-### WRITE IN CONSOLE
+### DATA ENRICHMENT
+#todo
+
+
+### STATEFUL AGGREGATIONS
+#todo
+
+
+### SINK
+# for now we just write on console to check everything works fine
 query = item_data.writeStream \
     .outputMode("append") \
     .format("console") \
+    .option("truncate", "false") \
     .start()
 
 query.awaitTermination()
