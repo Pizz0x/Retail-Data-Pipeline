@@ -40,7 +40,7 @@ conf = {'bootstrap.servers': 'localhost:9092', # we just need get the address of
         'client.id': f'{store_loc}_{checkout_n}'
         }
 producer = Producer(conf)
-topic = "bank_transactions"
+topic = "receipts_flow"
 
 # possible configurations of each article
 catalogue = {
