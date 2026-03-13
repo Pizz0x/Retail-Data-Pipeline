@@ -10,5 +10,4 @@ _spark_metadata/
 
 .vscode
 
-data/*
-!data/.gitkeep
+data/*.txt

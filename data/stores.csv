@@ -1,0 +1,11 @@
+store,region,square_footage,loc_type
+Milan 1,Lombardy,500,City Center
+Milan 2,Lombardy,450, Commercial Center
+Milan 3,Lombardy,300,City Center
+Milan 4,Lombardy,350,Outskirts
+Rome 1,Lazio,400,City Center
+Rome 2,Lazio,420,Commercial Center
+Rome 3,Lazio,300,Outskirts
+Venice 1,Veneto,350,Commercial Center
+Naples 1,Campania,400,City Center
+Turin 1,Piedmont,320,City Center

@@ -1,0 +1,23 @@
+category,model,list_price,supplier,cost,sustainable
+Jeans,Skinny,49.99,Denim-Works Co.,20.00,False
+Jeans,Slim,59.99,Denim-Works Co.,24.00,True
+Jeans,Straight,69.99,Global Textiles Ltd,28.00,False
+Jeans,Baggy,79.99,Global Textiles Ltd,32.00,True
+T-Shirt,Basic,14.99,Cotton-Prime Inc,6.00,True
+T-Shirt,Graphic Print,24.99,Cotton-Prime Inc,10.00,False
+T-Shirt,Oversize,29.99,Urban Stitching,12.00,False
+T-Shirt,Polo,34.99,Urban Stitching,14.00,True
+Sweater,Crewneck,39.99,Knitwear Alliance,16.00,True
+Sweater,Hoodie,49.99,Knitwear Alliance,20.00,False
+Sweater,Zip-Up,54.99,Knitwear Alliance,22.00,False
+Jacket,Denim,79.99,Denim-Works Co.,32.00,False
+Jacket,Bomber,99.99,Outerwear Specialty,40.00,False
+Jacket,Puffer,129.99,Outerwear Specialty,52.00,True
+Jacket,Leather,199.99,Outerwear Specialty,80.00,False
+Shoes,Canvas,59.99,Footwear Hub,24.00,True
+Shoes,Running,89.99,Footwear Hub,36.00,False
+Shoes,Chunky,119.99,Footwear Hub,48.00,False
+Shoes,High-Top,139.99,Footwear Hub,56.00,False
+Socks,Ankle (3-pack),9.99,Basic-Wear Intl,4.00,False
+Socks,Crew,5.99,Basic-Wear Intl,2.40,True
+Socks,Sport,12.99,Basic-Wear Intl,5.20,False
