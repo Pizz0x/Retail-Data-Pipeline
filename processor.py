@@ -1,6 +1,6 @@
 import pyspark
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, explode
+from pyspark.sql.functions import from_json, col, explode, broadcast
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType
 
 # create the spark session and configure the kafka connector
@@ -33,6 +33,25 @@ receipt_schema = StructType([
     StructField("total_price", DoubleType(), True),
     StructField("items", ArrayType(item_schema), True)
 ])
+
+### LOADING STATIC TABLES -> they are then used for data enrichment
+# we will say header=true to declare that the name of the columns should be the one given in the csv file
+# we will say inferschema=true to declare that we want the schema to be inferred from data (otherwise it's all strings), we cannot do so in Structured Streaming since Spark cannot look at all the data and decide (they keep flowinf)
+
+df_stores = spark.read \
+    .option("header", "true") \
+    .option("InferSchema", "true") \
+    .csv(".data/stores.csv")
+
+df_checkouts = spark.read \
+    .option("header", "true") \
+    .option("InferSchema", "true") \
+    .csv(".data/checkouts.csv")
+
+df_items = spark.read \
+    .option("header", "true") \
+    .option("InferSchema", "true") \
+    .csv(".data/items.csv")
 
 
 ### READ FROM KAFKA PIPELINE
@@ -79,8 +98,19 @@ item_data = receipt_data \
 
 
 ### DATA ENRICHMENT
-#todo
+# we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
+# since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
+df_enriched = item_data.join(
+    broadcast(df_stores),
+    on="store",
+    how="left"  # this way if the store is not in the static table, we don't lose the receipt
+)
 
+df_enriched = item_data.join(
+    broadcast(df_items),
+    on=["category","model"],
+    how="left"
+)
 
 ### STATEFUL AGGREGATIONS
 #todo

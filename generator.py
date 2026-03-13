@@ -53,13 +53,13 @@ catalogue = {
     'Sweater': {
         'Crewneck': 39.99, 'Hoodie': 49.99, 'Zip-Up': 54.99
     },
-    'Jacker': {
+    'Jacket': {
         'Denim': 79.99, 'Bomber': 99.99, 'Puffer': 129.99, 'Leather': 199.99
     },
     'Shoes': {
         'Canvas': 59.99, 'Running': 89.99, 'Chunky': 119.99, 'High-Top': 139.99
     },
-    'Sockets': {
+    'Socks': {
         'Ankle (3-pack)': 9.99, 'Crew': 5.99, 'Sport': 12.99
     }
 }
