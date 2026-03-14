@@ -97,12 +97,29 @@ item_data = receipt_data \
         col("individual_article.size").alias("size")
     )
 
+### DATA CLEANING
+# handle null values by adding a new feauture that reports problematic instances 
+# we divide data in 2 flows -> one for the signaled data (that goes into a log file) and the other with the data that pass the check
+critical_fields = ["receipt_id", "store", "price", "category", "model"]
+critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
 
+important_fields = ["checkout", "timestamp"]
+informative_fields = ["total_amount", "sex", "size"]
+
+tagget_data = item_data.withColumn(
+        "error",
+        when(col("test")==True, "TEST_TRANSACTION")
+        .when(critical_condition, "MISSING_CRITICAL_FIELD")
+        .otherwise(None)
+    )
+# we then throw problematic instances straight to the log queue and we remove them from the data to be processed
+log_struct = tagget_data.filter(col("error").isNotNull()) 
+item_data = tagget_data.filter(col("error").isNull()).drop("error")
 
 ### DATA ENRICHMENT
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
 # since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
-df_enriched = item_data.join(
+enriched_data = item_data.join(
         broadcast(df_stores),
         on="store",
         how="left"  # this way if the store is not in the static table, we don't lose the receipt
@@ -119,23 +136,21 @@ df_enriched = item_data.join(
     )
 
 ### DATA ENGINEERING
-# data cleaning: handle null values, test receipts (special code), returns of clothes, absurd prices and duplicates
-# we put discarded problematic rows in a log file
-
-critical_fields = ["receipt_id", "store", "price", "category", "model"]
-critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
-
-important_fields = ["checkout", "timestamp"]
-informative_fields = ["total_amount", "sex", "size"]
-df_checked = df_enriched.withColumn(
+# we now compute a further step in data cleaning by handling of non-crytical features null values, returns of clothes, absurd prices and duplicates
+# we put in the log file, rows with problematic prices and for what concerns with other problems we deal with them with fallback values 
+validated_data = enriched_data.withColumn(
         "error",
         when(col("price") > col("list_price"), f"PRICE_EXCEEDS_CATALOG")
-        .when(col("price") < 0, "ARTICLE_RETURN")
-        .when(col("test")==True, "TEST_TRANSACTION")
-        .when(critical_condition, "MISSING_CRITICAL_FIELD")
+        .when(col("price") < (-1*col("list_price")), "REFUND_EXCEEDS_CATALOG")
         .otherwise(None)
-    ) \
-    .dropDuplicates(["receipt_id", "category", "model"])
+    )
+
+# split in log data and correct data
+log_price = validated_data.filter(col("error").isNotNull())
+enriched_data = validated_data.filter(col("error").isNull()).drop("error")
+# now we are ensured that the data are correct and we can proceed with the data engineering part
+
+
 # create new feautures based on the given ones (discount = list_price-price, profit = price-cost), maybe creating an amount feature and remove the rows of the same receipt with the same clothes
 
 ### STATEFUL AGGREGATIONS
