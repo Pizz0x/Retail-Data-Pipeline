@@ -66,6 +66,7 @@ catalogue = {
 size = ['XS', 'S', 'M', 'L', 'XL', '2XL']
 sex = ['F', 'M']
 
+is_test = True
 
 def generate_receipt():
     global current_receipt
@@ -94,8 +95,10 @@ def generate_receipt():
         "checkout": checkout_n,
         "timestamp": datetime.now().isoformat(),
         "total_price": round(total_amount, 2),
+        "test": is_test,
         "items": items
     }
+    is_test = False
     return receipt
 
 

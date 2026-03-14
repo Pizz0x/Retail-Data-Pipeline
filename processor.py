@@ -1,7 +1,9 @@
 import pyspark
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, explode, broadcast
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType
+from functools import reduce
+from operator import or_
+from pyspark.sql.functions import from_json, col, explode, broadcast, when
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
 
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
@@ -31,6 +33,7 @@ receipt_schema = StructType([
     StructField("checkout", IntegerType(), True),
     StructField("timestamp", TimestampType(), True),
     StructField("total_price", DoubleType(), True),
+    StructField("test", BooleanType(), True),
     StructField("items", ArrayType(item_schema), True)
 ])
 
@@ -41,17 +44,17 @@ receipt_schema = StructType([
 df_stores = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv(".data/stores.csv")
+    .csv("./data/stores.csv")
 
 df_checkouts = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv(".data/checkouts.csv")
+    .csv("./data/checkouts.csv")
 
 df_items = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv(".data/items.csv")
+    .csv("./data/items.csv")
 
 
 ### READ FROM KAFKA PIPELINE
@@ -78,6 +81,7 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
+        "test",
         explode(col("items")).alias("individual_article") # create a row for every article
     ) \
     .select(
@@ -85,6 +89,7 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
+        "test",
         col("individual_article.category").alias("category"),
         col("individual_article.model").alias("model"),
         col("individual_article.price").alias("price"),
@@ -93,24 +98,45 @@ item_data = receipt_data \
     )
 
 
-### DATA CLEANING
-#todo
-
 
 ### DATA ENRICHMENT
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
 # since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
 df_enriched = item_data.join(
-    broadcast(df_stores),
-    on="store",
-    how="left"  # this way if the store is not in the static table, we don't lose the receipt
-)
+        broadcast(df_stores),
+        on="store",
+        how="left"  # this way if the store is not in the static table, we don't lose the receipt
+    ). \
+    join(
+        broadcast(df_items),
+        on=["category","model"],
+        how="left"
+    ). \
+    join(
+        broadcast(df_checkouts),
+        on=["store", "checkout"],
+        how="left"
+    )
 
-df_enriched = item_data.join(
-    broadcast(df_items),
-    on=["category","model"],
-    how="left"
-)
+### DATA ENGINEERING
+# data cleaning: handle null values, test receipts (special code), returns of clothes, absurd prices and duplicates
+# we put discarded problematic rows in a log file
+
+critical_fields = ["receipt_id", "store", "price", "category", "model"]
+critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
+
+important_fields = ["checkout", "timestamp"]
+informative_fields = ["total_amount", "sex", "size"]
+df_checked = df_enriched.withColumn(
+        "error",
+        when(col("price") > col("list_price"), f"PRICE_EXCEEDS_CATALOG")
+        .when(col("price") < 0, "ARTICLE_RETURN")
+        .when(col("test")==True, "TEST_TRANSACTION")
+        .when(critical_condition, "MISSING_CRITICAL_FIELD")
+        .otherwise(None)
+    ) \
+    .dropDuplicates(["receipt_id", "category", "model"])
+# create new feautures based on the given ones (discount = list_price-price, profit = price-cost), maybe creating an amount feature and remove the rows of the same receipt with the same clothes
 
 ### STATEFUL AGGREGATIONS
 #todo
@@ -118,7 +144,7 @@ df_enriched = item_data.join(
 
 ### SINK
 # for now we just write on console to check everything works fine
-query = item_data.writeStream \
+query = df_enriched.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
