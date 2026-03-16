@@ -1,8 +1,9 @@
 import pyspark
 from pyspark.sql import SparkSession
 from functools import reduce
+from pyspark.sql.window import Window
 from operator import or_
-from pyspark.sql.functions import from_json, col, explode, broadcast, when
+from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, sum as _sum
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
 
 # create the spark session and configure the kafka connector
@@ -11,6 +12,7 @@ spark = SparkSession.builder \
     .appName("FraudDetector") \
     .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version}") \
     .getOrCreate()
+    
 
 # hidden warnings (they are lame)
 spark.sparkContext.setLogLevel("WARN")
@@ -31,7 +33,7 @@ item_schema = StructType([
 receipt_schema = StructType([
     StructField("receipt_id", StringType(), True),
     StructField("store", StringType(), True),
-    StructField("checkout", IntegerType(), True),
+    StructField("checkout", StringType(), True),
     StructField("timestamp", TimestampType(), True),
     StructField("total_price", DoubleType(), True),
     StructField("test", BooleanType(), True),
@@ -75,6 +77,16 @@ receipt_data = kafka_data \
     .selectExpr( "CAST(value AS STRING) as json_string") \
     .select(from_json(col("json_string"), receipt_schema).alias("data")) \
     .select("data.*") 
+
+# we compute the total amount in case it is null, before splitting data in articles since in this way we can compute it efficientyl without shuffling data
+df_inferred = receipt_data.withColumn(
+    "total_amount",
+    when(
+        col("total_amount").isNull(),
+        # Questa formula fa un loop interno all'array 'items' e somma price * quantity
+        expr("aggregate(items, 0D, (acc, item) -> acc + (item.price * coalesce(item.quantity, 1)))")
+    ).otherwise(col("total_amount"))
+)
 # at this point we want to transform the list of items contained in the receipts in a list of individual items for the analysis of the sells
 item_data = receipt_data \
     .select(
@@ -118,6 +130,8 @@ tagget_data = item_data.withColumn(
 log_struct = tagget_data.filter(col("error").isNotNull()) 
 item_data = tagget_data.filter(col("error").isNull()).drop("error")
 
+# STILL HAVE TO DEAL WITH DUPLICATES !!
+
 ### DATA ENRICHMENT
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
 # since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
@@ -153,6 +167,18 @@ enriched_data = validated_data.filter(col("error").isNull()).drop("error")
 # now we are ensured that the data are correct and we can proceed with the data engineering part
 
 # first we are gonna deal with NaN values for the important / informative values
+enriched_data = enriched_data.withColumn("timestamp",
+        when(col("timestamp").isNull(), current_timestamp()).otherwise(col("timestamp"))
+    ) \
+    .withColumn("quantity",
+        when(col("quantity").isNull(), 1).otherwise(col("quantity"))
+    )
+
+enriched_data = enriched_data.fillna({
+    "checkout": "UNKNOWN_CHECKOUT",
+    "sex": "UNISEX",
+    "size": "UNKNOWN"
+})
 
 
 # the we are gonna add some new informative fields:
