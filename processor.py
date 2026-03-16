@@ -24,6 +24,7 @@ item_schema = StructType([
     StructField("price", DoubleType(), True),
     StructField("sex", StringType(), True),
     StructField("size", StringType(), True),
+    StructField("quantity", IntegerType(), True),
 ])
 
 # stucture of receipts data
@@ -94,7 +95,8 @@ item_data = receipt_data \
         col("individual_article.model").alias("model"),
         col("individual_article.price").alias("price"),
         col("individual_article.sex").alias("sex"),
-        col("individual_article.size").alias("size")
+        col("individual_article.size").alias("size"),
+        col("individual_article.size").alias("quantity")
     )
 
 ### DATA CLEANING
@@ -103,8 +105,8 @@ item_data = receipt_data \
 critical_fields = ["receipt_id", "store", "price", "category", "model"]
 critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
 
-important_fields = ["checkout", "timestamp"]
-informative_fields = ["total_amount", "sex", "size"]
+important_fields = ["checkout", "timestamp", "quantity"] # field that we have to handle by putting default values
+informative_fields = ["total_amount", "sex", "size"] # filed that we have to handle by just setting them as N/A
 
 tagget_data = item_data.withColumn(
         "error",
@@ -150,6 +152,16 @@ log_price = validated_data.filter(col("error").isNotNull())
 enriched_data = validated_data.filter(col("error").isNull()).drop("error")
 # now we are ensured that the data are correct and we can proceed with the data engineering part
 
+# first we are gonna deal with NaN values for the important / informative values
+
+
+# the we are gonna add some new informative fields:
+# - a new boolean field that flags if an item is a sale or a return
+# - if there is a discout applied and of how much
+# - the profit in the sale of the article
+# - the margin (profit / list_price) * 100
+# - temporal information (hour of the day) (season) (month) (day of the week)
+
 
 # create new feautures based on the given ones (discount = list_price-price, profit = price-cost), maybe creating an amount feature and remove the rows of the same receipt with the same clothes
 
@@ -159,7 +171,7 @@ enriched_data = validated_data.filter(col("error").isNull()).drop("error")
 
 ### SINK
 # for now we just write on console to check everything works fine
-query = df_enriched.writeStream \
+query = enriched_data.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \

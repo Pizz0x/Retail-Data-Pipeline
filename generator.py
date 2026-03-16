@@ -84,8 +84,9 @@ def generate_receipt():
         category = random.choice(list(catalogue.keys()))
         model = random.choice(list(catalogue[category].keys()))
         price = catalogue[category][model]
+        quantity = int(1 + (random.random()**2 * 5))
 
-        items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size)})
+        items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size), "quantity": quantity})
         total_amount += price
 
     
