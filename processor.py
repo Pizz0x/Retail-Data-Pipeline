@@ -84,12 +84,12 @@ receipt_data = receipt_data.withColumn("timestamp",
         when(col("timestamp").isNull(), current_timestamp()).otherwise(col("timestamp"))
     ) \
     .withColumn(
-        "total_amount",
+        "total_price",
         when(
-            col("total_amount").isNull(),
+            col("total_price").isNull(),
             # Questa formula fa un loop interno all'array 'items' e somma price * quantity
             expr("aggregate(items, 0D, (acc, item) -> acc + (item.price * coalesce(item.quantity, 1)))")
-        ).otherwise(col("total_amount"))
+        ).otherwise(col("total_price"))
 )
 
 # we also delete network duplicates here since after the splitting of data it would be more difficult cause they would be splitted around the multiple nodes and are more difficult to find, while now we just have to find 2 equal receipt_id to be sure there is a duplicate
@@ -108,7 +108,7 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
-        "total_amout",
+        "total_price",
         "test",
         explode(col("items")).alias("individual_article") # create a row for every article
     ) \
@@ -117,7 +117,7 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
-        "total_amout",
+        "total_price",
         "test",
         col("individual_article.category").alias("category"),
         col("individual_article.model").alias("model"),
@@ -134,7 +134,7 @@ critical_fields = ["receipt_id", "store", "price", "category", "model"]
 critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
 
 important_fields = ["checkout", "timestamp", "quantity"] # field that we have to handle by putting default values
-informative_fields = ["total_amount", "sex", "size"] # filed that we have to handle by just setting them as N/A
+informative_fields = ["total_price", "sex", "size"] # filed that we have to handle by just setting them as N/A
 
 tagget_data = item_data.withColumn(
         "error",
@@ -211,7 +211,7 @@ engineered_data = enriched_data.withColumn("transaction_type",
             col("transaction_type") == "SALE", 
             round((_abs(col("price")) - col("cost")) * col("quantity"), 2)
         ).otherwise(
-            round(-1 * (col("abs_price") - col("cost")) * col("quantity"), 2)
+            round(-1 * (_abs(col("price")) - col("cost")) * col("quantity"), 2)
         )
     ) \
     .withColumn("margin_percentage",
@@ -234,7 +234,7 @@ engineered_data = engineered_data.withColumn(
 
 ### SINK
 # for now we just write on console to check everything works fine
-query = enriched_data.writeStream \
+query = engineered_data.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \

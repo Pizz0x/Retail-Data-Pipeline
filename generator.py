@@ -69,6 +69,7 @@ sex = ['F', 'M']
 is_test = True
 
 def generate_receipt():
+    global is_test
     global current_receipt
     current_receipt += 1
     save_receipt(current_receipt)
