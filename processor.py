@@ -79,14 +79,28 @@ receipt_data = kafka_data \
     .select("data.*") 
 
 # we compute the total amount in case it is null, before splitting data in articles since in this way we can compute it efficientyl without shuffling data
-df_inferred = receipt_data.withColumn(
-    "total_amount",
-    when(
-        col("total_amount").isNull(),
-        # Questa formula fa un loop interno all'array 'items' e somma price * quantity
-        expr("aggregate(items, 0D, (acc, item) -> acc + (item.price * coalesce(item.quantity, 1)))")
-    ).otherwise(col("total_amount"))
+# we also need to ensure that timestamp is not null for the next computation (the removal of duplicates with the watermark)
+receipt_data = receipt_data.withColumn("timestamp",
+        when(col("timestamp").isNull(), current_timestamp()).otherwise(col("timestamp"))
+    ) \
+    .withColumn(
+        "total_amount",
+        when(
+            col("total_amount").isNull(),
+            # Questa formula fa un loop interno all'array 'items' e somma price * quantity
+            expr("aggregate(items, 0D, (acc, item) -> acc + (item.price * coalesce(item.quantity, 1)))")
+        ).otherwise(col("total_amount"))
 )
+
+# we also delete network duplicates here since after the splitting of data it would be more difficult cause they would be splitted around the multiple nodes and are more difficult to find, while now we just have to find 2 equal receipt_id to be sure there is a duplicate
+# we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
+# without a watermark, Spark have to remember all the ids which is not feasible
+receipt_data = receipt_data \
+    .withWatermark("timestamp", "10 minutes") \
+    .dropDuplicates(["receipt_id"])
+
+
+
 # at this point we want to transform the list of items contained in the receipts in a list of individual items for the analysis of the sells
 item_data = receipt_data \
     .select(
@@ -94,6 +108,7 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
+        "total_amout",
         "test",
         explode(col("items")).alias("individual_article") # create a row for every article
     ) \
@@ -102,13 +117,14 @@ item_data = receipt_data \
         "store",
         "checkout",
         "timestamp",
+        "total_amout",
         "test",
         col("individual_article.category").alias("category"),
         col("individual_article.model").alias("model"),
         col("individual_article.price").alias("price"),
         col("individual_article.sex").alias("sex"),
         col("individual_article.size").alias("size"),
-        col("individual_article.size").alias("quantity")
+        col("individual_article.quantity").alias("quantity")
     )
 
 ### DATA CLEANING
@@ -166,11 +182,8 @@ log_price = validated_data.filter(col("error").isNotNull())
 enriched_data = validated_data.filter(col("error").isNull()).drop("error")
 # now we are ensured that the data are correct and we can proceed with the data engineering part
 
-# first we are gonna deal with NaN values for the important / informative values
-enriched_data = enriched_data.withColumn("timestamp",
-        when(col("timestamp").isNull(), current_timestamp()).otherwise(col("timestamp"))
-    ) \
-    .withColumn("quantity",
+# first we are gonna deal with the remaining features in case of missing values
+enriched_data = enriched_data.withColumn("quantity",
         when(col("quantity").isNull(), 1).otherwise(col("quantity"))
     )
 
@@ -180,8 +193,7 @@ enriched_data = enriched_data.fillna({
     "size": "UNKNOWN"
 })
 
-
-# the we are gonna add some new informative fields:
+# now we can finally add some new informative fields:
 # - a new boolean field that flags if an item is a sale or a return
 # - if there is a discout applied and of how much
 # - the profit in the sale of the article

@@ -95,7 +95,7 @@ def generate_receipt():
         "store": store_loc,
         "checkout": checkout_n,
         "timestamp": datetime.now().isoformat(),
-        "total_price": round(total_amount, 2),
+        "total_amount": round(total_amount, 2),
         "test": is_test,
         "items": items
     }
