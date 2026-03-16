@@ -87,7 +87,7 @@ def generate_receipt():
         quantity = int(1 + (random.random()**2 * 5))
 
         items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size), "quantity": quantity})
-        total_amount += price
+        total_amount += price*quantity
 
     
     receipt = {

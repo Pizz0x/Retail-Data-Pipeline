@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from functools import reduce
 from pyspark.sql.window import Window
 from operator import or_
-from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, sum as _sum
+from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, hour, month, round, date_format
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
 
 # create the spark session and configure the kafka connector
@@ -138,7 +138,7 @@ informative_fields = ["total_amount", "sex", "size"] # filed that we have to han
 
 tagget_data = item_data.withColumn(
         "error",
-        when(col("test")==True, "TEST_TRANSACTION")
+        when(col("test"), "TEST_TRANSACTION")
         .when(critical_condition, "MISSING_CRITICAL_FIELD")
         .otherwise(None)
     )
@@ -172,7 +172,8 @@ enriched_data = item_data.join(
 # we put in the log file, rows with problematic prices and for what concerns with other problems we deal with them with fallback values 
 validated_data = enriched_data.withColumn(
         "error",
-        when(col("price") > col("list_price"), f"PRICE_EXCEEDS_CATALOG")
+        when(col("list_price").isNull(), "ITEM_NOT_IN_CATALOG") # if in the enrichment table we still don't have the article, the broadcast will let it be using null values for the static table features, we have to flag it
+        .when(col("price") > col("list_price"), f"PRICE_EXCEEDS_CATALOG")
         .when(col("price") < (-1*col("list_price")), "REFUND_EXCEEDS_CATALOG")
         .otherwise(None)
     )
@@ -199,9 +200,33 @@ enriched_data = enriched_data.fillna({
 # - the profit in the sale of the article
 # - the margin (profit / list_price) * 100
 # - temporal information (hour of the day) (season) (month) (day of the week)
+engineered_data = enriched_data.withColumn("transaction_type",
+        when(col("price")<0, "RETURN").otherwise("SALE")
+    ) \
+    .withColumn("discount",
+        round((col("list_price")-_abs(col("price"))*col("quantity")) / col("list_price") * 100,2)
+    ) \
+    .withColumn("net_profit",
+        when(
+            col("transaction_type") == "SALE", 
+            round((_abs(col("price")) - col("cost")) * col("quantity"), 2)
+        ).otherwise(
+            round(-1 * (col("abs_price") - col("cost")) * col("quantity"), 2)
+        )
+    ) \
+    .withColumn("margin_percentage",
+        round(((_abs(col("price")) - col("cost")) / col("list_price")) * 100, 2)
+    )
 
-
-# create new feautures based on the given ones (discount = list_price-price, profit = price-cost), maybe creating an amount feature and remove the rows of the same receipt with the same clothes
+engineered_data = engineered_data.withColumn(
+    "hour_of_day", hour(col("timestamp"))
+    ) \
+    .withColumn(
+        "day_of_week", date_format(col("timestamp"), "EEEE")
+    ) \
+    .withColumn(
+        "month", month(col("timestamp"))
+    )
 
 ### STATEFUL AGGREGATIONS
 #todo
