@@ -8,25 +8,33 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
+spark_version = pyspark.__version__
+
 spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
     .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version},"
-            f"org.apache.hadoop:hadoop-aws:3.3.4") \
+                                   f"org.apache.hadoop:hadoop-aws:3.3.4,"
+                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262") \
+    .config("spark.hadoop.fs.s3a.access.key", "admin") \
+    .config("spark.hadoop.fs.s3a.secret.key", "password123") \
+    .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000") \
+    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
+    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
+    .config("spark.hadoop.fs.s3a.connection.timeout", "60000") \
+    .config("spark.hadoop.fs.s3a.connection.establish.timeout", "15000") \
+    .config("spark.hadoop.fs.s3a.connection.acquisition.timeout", "60000") \
+    .config("spark.hadoop.fs.s3a.connection.idle.time", "60000") \
+    .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000") \
+    .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
+    .config("spark.hadoop.fs.s3a.connection.ttl", "300000") \
+    .config("spark.hadoop.fs.s3a.multipart.purge.age", "86400") \
     .getOrCreate()
     
 
 # hidden warnings (they are lame)
 spark.sparkContext.setLogLevel("WARN")
-
-# configuration of credential for AWS S3
-sc = spark.sparkContext
-sc._jsc.hadoopConfiguration().set("fs.s3a.access.key", "admin")
-sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", "password123")
-sc._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "http://localhost:9000")
-
-sc._jsc.hadoopConfiguration().set("fs.s3a.connection.ssl.enabled", "false")
-sc._jsc.hadoopConfiguration().set("fs.s3a.path.style.access", "true")
-sc._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
 
 ### DEFINITION OF DATA SCHEMA -> we need to specify it cause Spark is not able to infer the correct types in case of continuos streaming of data
 
@@ -81,6 +89,20 @@ kafka_data = spark \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
 
+### BRONZE LEVEL SINK -> Raw Data
+bronze_data = kafka_data \
+    .selectExpr("CAST(value AS STRING) as raw_json",
+                "timestamp as kafka_arrival_time") # in this case we infer the missing timestamp as the time the data arrived from kafka
+
+query_bronze = bronze_data.writeStream \
+    .outputMode("append") \
+    .format("parquet") \
+    .option("path", "s3a://retail.datalake/bronze/receipts/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/bronze/") \
+    .start()
+# the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
+
+
 
 ### PARSING AND TRANSFORMATION OF DATA
 # transform data from the encoding obtained from kafka to actually readable data -> first we convert data to string format, then we apply the wanted JSON schema and finally we expand columns
@@ -102,6 +124,8 @@ receipt_data = receipt_data.withColumn("timestamp",
             expr("aggregate(items, 0D, (acc, item) -> acc + (item.price * coalesce(item.quantity, 1)))")
         ).otherwise(col("total_price"))
 )
+
+
 
 # we also delete network duplicates here since after the splitting of data it would be more difficult cause they would be splitted around the multiple nodes and are more difficult to find, while now we just have to find 2 equal receipt_id to be sure there is a duplicate
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
@@ -157,7 +181,6 @@ tagget_data = item_data.withColumn(
 log_struct = tagget_data.filter(col("error").isNotNull()) 
 item_data = tagget_data.filter(col("error").isNull()).drop("error")
 
-# STILL HAVE TO DEAL WITH DUPLICATES !!
 
 ### DATA ENRICHMENT
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
@@ -239,16 +262,19 @@ engineered_data = engineered_data.withColumn(
         "month", month(col("timestamp"))
     )
 
+### SILVER LEVEL SINK -> cleaned and processed data 
+# for now we just write on console to check everything works fine
+query_silver = engineered_data.writeStream \
+    .outputMode("append") \
+    .format("parquet") \
+    .option("path", "s3a://retail.datalake/silver/receipts/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/silver/") \
+    .start()
+
+
+
 ### STATEFUL AGGREGATIONS
 #todo
 
 
-### SINK
-# for now we just write on console to check everything works fine
-query = engineered_data.writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
-
-query.awaitTermination()
+spark.streams.awaitAnyTermination()

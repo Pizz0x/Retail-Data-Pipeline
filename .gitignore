@@ -11,3 +11,4 @@ _spark_metadata/
 .vscode
 
 data/*.txt
+minio_data
