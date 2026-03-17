@@ -9,13 +9,24 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
 spark = SparkSession.builder \
-    .appName("FraudDetector") \
-    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version}") \
+    .appName("RetailDataPipeline") \
+    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version},"
+            f"org.apache.hadoop:hadoop-aws:3.3.4") \
     .getOrCreate()
     
 
 # hidden warnings (they are lame)
 spark.sparkContext.setLogLevel("WARN")
+
+# configuration of credential for AWS S3
+sc = spark.sparkContext
+sc._jsc.hadoopConfiguration().set("fs.s3a.access.key", "admin")
+sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", "password123")
+sc._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "http://localhost:9000")
+
+sc._jsc.hadoopConfiguration().set("fs.s3a.connection.ssl.enabled", "false")
+sc._jsc.hadoopConfiguration().set("fs.s3a.path.style.access", "true")
+sc._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
 
 ### DEFINITION OF DATA SCHEMA -> we need to specify it cause Spark is not able to infer the correct types in case of continuos streaming of data
 

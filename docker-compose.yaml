@@ -8,9 +8,7 @@ services:
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      # Qui mettiamo 0.0.0.0 per fargli accettare le connessioni da fuori!
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      # Qui invece diciamo: "Dì a chi si collega di cercarmi su localhost"
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
@@ -21,3 +19,16 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"  # Porta per le API (Quella che userà PySpark)
+      - "9001:9001"  # Porta per la Console Web (Quella che userai tu dal browser)
+    environment:
+      - MINIO_ROOT_USER=admin          # Questa diventerà la tua ACCESS_KEY
+      - MINIO_ROOT_PASSWORD=password123 # Questa diventerà la tua SECRET_KEY
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio_data:/data  # Salva i file fisicamente in una cartella sul tuo PC
