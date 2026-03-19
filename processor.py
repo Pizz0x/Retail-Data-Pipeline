@@ -250,9 +250,6 @@ engineered_data = enriched_data.withColumn("transaction_type",
         ).otherwise(
             round(-1 * (_abs(col("price")) - col("cost")) * col("quantity"), 2)
         )
-    ) \
-    .withColumn("margin_percentage",
-        round(((_abs(col("price")) - col("cost")) / col("list_price")) * 100, 2)
     )
 
 engineered_data = engineered_data.withColumn(
@@ -296,11 +293,12 @@ trending_article = engineered_data \
         window(col("timestamp"), "30 minutes", "10 minutes"),
         col("category"),
         col("model"),
-        col("sex")
+        col("sex"),
+        col("supplier")
     ) \
     .agg(
         sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
-        sum(when(col("transaction_type")=="SALE", col("quantity")*col("profit")).otherwise(0)).alias("profit_articles"),
+        sum(col("net_profit")).alias("profit_articles"),  # profit is already computed on the quantity of articles sold and is negative in case of return
         sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("return_articles"),
     ) \
     .withColumn(
@@ -313,22 +311,33 @@ best_store = engineered_data \
     .withWatermark("timestamp", "30 minutes") \
     .groupBy(
         window(col("timestamp"), "30 minutes", "10 minutes"),
-        col("store")
+        col("store"),
+        col("region"),
+        col("loc_type"),
+        col("square_footage"),
+        col("checkout_type"),
+        col("checkout_department")
     ) \
     .agg(
-        sum(when(col("transaction_type")=="SALE",col("profit")).when(col("transaction_type")=="RETURN", -col("profit")).otherwise(0)).alias("net_store_profit"),
-        sum(when(col("transaction_type")=="SALE",col("price")).when(col("transaction_type")=="RETURN", -col("price")).otherwise(0)).alias("net_store_revenue"),
-        sum(when(col("transaction_type")=="SALE",col("list_price")).when(col("transaction_type")=="RETURN", -col("list_price")).otherwise(0)).alias("net_theoretic_revenue"),
-        sum(when(col("transaction_type")=="SALE",col("cost")).when(col("transaction_type")=="RETURN", -col("cost")).otherwise(0)).alias("net_costs"),
-        sum(when(col("transaction_type") == "SALE", 1).otherwise(0)).alias("total_sales"),
-        sum(when(col("transaction_type") == "RETURN", 1).otherwise(0)).alias("total_return")
+        sum(col("profit")).alias("ck_net_store_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
+        sum(when(col("transaction_type")=="SALE",col("price")*col("quantity"))
+            .when(col("transaction_type")=="RETURN", -col("price")*col("quantity"))
+            .otherwise(0)).alias("ck_net_revenue"),
+        sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
+            .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
+            .otherwise(0)).alias("ck_net_theoretic_revenue"),
+        sum(when(col("transaction_type")=="SALE",col("cost")*col("quantity"))
+            .when(col("transaction_type")=="RETURN", -col("cost")*col("quantity"))
+            .otherwise(0)).alias("ck_net_costs"),
+        sum(when(col("transaction_type") == "SALE", col("quantity")).otherwise(0)).alias("ck_total_sales"),
+        sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return")
     ) \
     .withColumn(
-        "return_rate",
+        "ck_return_rate",
         (col("total_return") / (col("total_return")+col("total_sales")))*100
     ) \
     .withColumn(
-        "net_margin",
+        "ck_net_margin",
         ((col("net_store_profit") - col("net_costs"))/ col("net_theoretical_revenue")) * 100
     )
 

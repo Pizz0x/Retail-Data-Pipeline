@@ -1,4 +1,4 @@
-store,checkout,type,department
+store,checkout,checkout_type,checkout_department
 Milan1,1,Standard,Female
 Milan1,2,Standard,Female
 Milan1,3,Standard,Female
