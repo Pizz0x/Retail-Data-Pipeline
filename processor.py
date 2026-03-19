@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from functools import reduce
 from pyspark.sql.window import Window
 from operator import or_
-from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, hour, month, round, date_format
+from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, sum, count, hour, month, round, date_format, window
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
 
 # create the spark session and configure the kafka connector
@@ -55,6 +55,7 @@ receipt_schema = StructType([
     StructField("checkout", StringType(), True),
     StructField("timestamp", TimestampType(), True),
     StructField("total_price", DoubleType(), True),
+    StructField("payment", StringType(), True),
     StructField("test", BooleanType(), True),
     StructField("items", ArrayType(item_schema), True)
 ])
@@ -144,6 +145,7 @@ item_data = receipt_data \
         "checkout",
         "timestamp",
         "total_price",
+        "payment",
         "test",
         explode(col("items")).alias("individual_article") # create a row for every article
     ) \
@@ -225,7 +227,8 @@ enriched_data = enriched_data.withColumn("quantity",
 enriched_data = enriched_data.fillna({
     "checkout": "UNKNOWN_CHECKOUT",
     "sex": "UNISEX",
-    "size": "UNKNOWN"
+    "size": "UNKNOWN",
+    "payment": "UNKNOWN"
 })
 
 # now we can finally add some new informative fields:
@@ -274,7 +277,61 @@ query_silver = engineered_data.writeStream \
 
 
 ### STATEFUL AGGREGATIONS
-#todo
 
+# check number of transactions for each type of payment in a given store
+live_transactions = engineered_data \
+    .withWatermark("timestamp", "5 minutes") \
+    .groupBy(
+        window(col("timestamp"), "5 minutes"),
+        col("store"),
+        col("payment")
+    ) \
+    .agg(count("*").alias("transaction_number"))
+
+
+# check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
+trending_article = engineered_data \
+    .withWatermark("timestamp", "30 minutes") \
+    .groupBy(
+        window(col("timestamp"), "30 minutes", "10 minutes"),
+        col("category"),
+        col("model"),
+        col("sex")
+    ) \
+    .agg(
+        sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
+        sum(when(col("transaction_type")=="SALE", col("quantity")*col("profit")).otherwise(0)).alias("profit_articles"),
+        sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("return_articles"),
+    ) \
+    .withColumn(
+        "return_rate",
+        (col("return_articles") / (col("sold_articles")+col("return_articles")))*100
+    )
+
+# check the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
+best_store = engineered_data \
+    .withWatermark("timestamp", "30 minutes") \
+    .groupBy(
+        window(col("timestamp"), "30 minutes", "10 minutes"),
+        col("store")
+    ) \
+    .agg(
+        sum(when(col("transaction_type")=="SALE",col("profit")).when(col("transaction_type")=="RETURN", -col("profit")).otherwise(0)).alias("net_store_profit"),
+        sum(when(col("transaction_type")=="SALE",col("price")).when(col("transaction_type")=="RETURN", -col("price")).otherwise(0)).alias("net_store_revenue"),
+        sum(when(col("transaction_type")=="SALE",col("list_price")).when(col("transaction_type")=="RETURN", -col("list_price")).otherwise(0)).alias("net_theoretic_revenue"),
+        sum(when(col("transaction_type")=="SALE",col("cost")).when(col("transaction_type")=="RETURN", -col("cost")).otherwise(0)).alias("net_costs"),
+        sum(when(col("transaction_type") == "SALE", 1).otherwise(0)).alias("total_sales"),
+        sum(when(col("transaction_type") == "RETURN", 1).otherwise(0)).alias("total_return")
+    ) \
+    .withColumn(
+        "return_rate",
+        (col("total_return") / (col("total_return")+col("total_sales")))*100
+    ) \
+    .withColumn(
+        "net_margin",
+        ((col("net_store_profit") - col("net_costs"))/ col("net_theoretical_revenue")) * 100
+    )
+
+# then for the analysis inherent not at the given period but in general we can check the item that is g
 
 spark.streams.awaitAnyTermination()
