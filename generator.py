@@ -66,7 +66,7 @@ catalogue = {
 size = ['XS', 'S', 'M', 'L', 'XL', '2XL']
 sex = ['F', 'M']
 
-payment = ['card', 'cash', 'gift card']
+payments = ['card', 'cash', 'gift card']
 
 is_test = True
 
@@ -99,7 +99,7 @@ def generate_receipt():
         "checkout": checkout_n,
         "timestamp": datetime.now().isoformat(),
         "total_amount": round(total_amount, 2),
-        "payment": random.choice(payment),
+        "payment": random.choice(payments),
         "test": is_test,
         "items": items
     }

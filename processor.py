@@ -14,7 +14,7 @@ spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
     .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version},"
                                    f"org.apache.hadoop:hadoop-aws:3.3.4,"
-                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262",
+                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262,"
                                    f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.clickhouse:clickhouse-jdbc:0.4.6") \
     .config("spark.hadoop.fs.s3a.access.key", "admin") \
     .config("spark.hadoop.fs.s3a.secret.key", "password123") \
@@ -128,14 +128,12 @@ receipt_data = receipt_data.withColumn("timestamp",
 )
 
 
-
 # we also delete network duplicates here since after the splitting of data it would be more difficult cause they would be splitted around the multiple nodes and are more difficult to find, while now we just have to find 2 equal receipt_id to be sure there is a duplicate
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
     .withWatermark("timestamp", "10 minutes") \
     .dropDuplicates(["receipt_id"])
-
 
 
 # at this point we want to transform the list of items contained in the receipts in a list of individual items for the analysis of the sells
@@ -156,6 +154,7 @@ item_data = receipt_data \
         "checkout",
         "timestamp",
         "total_price",
+        "payment",
         "test",
         col("individual_article.category").alias("category"),
         col("individual_article.model").alias("model"),
@@ -165,6 +164,7 @@ item_data = receipt_data \
         col("individual_article.quantity").alias("quantity")
     )
 
+
 ### DATA CLEANING
 # handle null values by adding a new feauture that reports problematic instances 
 # we divide data in 2 flows -> one for the signaled data (that goes into a log file) and the other with the data that pass the check
@@ -172,7 +172,7 @@ critical_fields = ["receipt_id", "store", "price", "category", "model"]
 critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
 
 important_fields = ["checkout", "timestamp", "quantity"] # field that we have to handle by putting default values
-informative_fields = ["total_price", "sex", "size"] # filed that we have to handle by just setting them as N/A
+informative_fields = ["total_price", "sex", "size", "payment"] # filed that we have to handle by just setting them as N/A
 
 tagget_data = item_data.withColumn(
         "error",
@@ -180,6 +180,8 @@ tagget_data = item_data.withColumn(
         .when(critical_condition, "MISSING_CRITICAL_FIELD")
         .otherwise(None)
     )
+
+
 # we then throw problematic instances straight to the log queue and we remove them from the data to be processed
 log_struct = tagget_data.filter(col("error").isNotNull()) 
 item_data = tagget_data.filter(col("error").isNull()).drop("error")
