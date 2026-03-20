@@ -14,7 +14,8 @@ spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
     .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version},"
                                    f"org.apache.hadoop:hadoop-aws:3.3.4,"
-                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262") \
+                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262",
+                                   f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.clickhouse:clickhouse-jdbc:0.4.6") \
     .config("spark.hadoop.fs.s3a.access.key", "admin") \
     .config("spark.hadoop.fs.s3a.secret.key", "password123") \
     .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000") \
@@ -275,12 +276,13 @@ query_silver = engineered_data.writeStream \
 
 ### STATEFUL AGGREGATIONS
 
-# check number of transactions for each type of payment in a given store
+# check number of transactions for each type of payment in a given checkout / store
 live_transactions = engineered_data \
     .withWatermark("timestamp", "5 minutes") \
     .groupBy(
         window(col("timestamp"), "5 minutes"),
         col("store"),
+        col("checkout"),
         col("payment")
     ) \
     .agg(count("*").alias("transaction_number"))
@@ -294,7 +296,8 @@ trending_article = engineered_data \
         col("category"),
         col("model"),
         col("sex"),
-        col("supplier")
+        col("supplier"),
+        col("store")
     ) \
     .agg(
         sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
@@ -306,8 +309,8 @@ trending_article = engineered_data \
         (col("return_articles") / (col("sold_articles")+col("return_articles")))*100
     )
 
-# check the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
-best_store = engineered_data \
+# check the checkout and so even the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
+store_checkout_stats = engineered_data \
     .withWatermark("timestamp", "30 minutes") \
     .groupBy(
         window(col("timestamp"), "30 minutes", "10 minutes"),
@@ -315,11 +318,12 @@ best_store = engineered_data \
         col("region"),
         col("loc_type"),
         col("square_footage"),
+        col("checkout"),
         col("checkout_type"),
         col("checkout_department")
     ) \
     .agg(
-        sum(col("profit")).alias("ck_net_store_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
+        sum(col("profit")).alias("ck_net_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
         sum(when(col("transaction_type")=="SALE",col("price")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("price")*col("quantity"))
             .otherwise(0)).alias("ck_net_revenue"),
@@ -330,17 +334,56 @@ best_store = engineered_data \
             .when(col("transaction_type")=="RETURN", -col("cost")*col("quantity"))
             .otherwise(0)).alias("ck_net_costs"),
         sum(when(col("transaction_type") == "SALE", col("quantity")).otherwise(0)).alias("ck_total_sales"),
-        sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return")
+        sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return"),
+        sum(when(col("transaction_type") == "SALE", col("discount")).otherwise(0)).alias("total_discount"), # this has then to be divided by the quantity on the interface platform that does the graphics (if we do the average directly here for the checkout then it would not be possible to do so even for the stores)
     ) \
     .withColumn(
         "ck_return_rate",
-        (col("total_return") / (col("total_return")+col("total_sales")))*100
+        (col("ck_total_return") / (col("ck_total_return")+col("ck_total_sales")))*100
     ) \
     .withColumn(
         "ck_net_margin",
-        ((col("net_store_profit") - col("net_costs"))/ col("net_theoretical_revenue")) * 100
+        ((col("ck_net_profit") - col("ck_net_costs"))/ col("ck_net_theoretical_revenue")) * 100
     )
 
-# then for the analysis inherent not at the given period but in general we can check the item that is g
+store_checkout_stats = store_checkout_stats.select(
+    col("store"),
+    col("checkout"),
+    col("window.start").alias("window_start"),
+    col("window.end").alias("window_end"),
+    col("region"),
+    col("loc_type"),
+    col("square_footage"),
+    col("checkout_type"),
+    col("checkout_department"),
+    col("ck_net_profit"),
+    col("ck_net_revenue"),
+    col("ck_net_theoretic_revenue"),
+    col("ck_net_costs"),
+    col("ck_total_sales"),
+    col("ck_total_return"),
+    col("total_discount"),
+    col("ck_return_rate"),
+    col("ck_net_margin")
+)
 
+# function to write batch in the databases
+def write_on_clickhouse(df_batch, epoch_id, table_name):
+    df_batch.write \
+        .format("jdbc") \
+        .mode("append") \
+        .option("driver", "com.clickhouse.jdbc.ClickHouseDriver") \
+        .option("url", "jdbc:clickhouse://localhost:8123/retail_stats") \
+        .option("dbtable", table_name) \
+        .option("user", "default") \
+        .option("password", "clickhouse123") \
+        .save()
+    
+store_checkout_query = store_checkout_stats.writeStream \
+    .outputMode("append") \
+    .foreachBatch(lambda df, epoch_id: write_on_clickhouse(df, epoch_id, "checkout_analytics")) \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/clickhouse_gold/") \
+    .start()
+
+# then for the analysis inherent not at the given period but in general we can check the item that is g
 spark.streams.awaitAnyTermination()

@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   broker:
     image: apache/kafka:latest
@@ -31,4 +33,25 @@ services:
       - MINIO_ROOT_PASSWORD=password123 # Questa diventerà la tua SECRET_KEY
     command: server /data --console-address ":9001"
     volumes:
-      - ./minio_data:/data  # Salva i file fisicamente in una cartella sul tuo PC
+      - minio_data:/data  # Salva i file fisicamente in una cartella sul tuo PC
+
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-gold
+    ports:
+      - "8123:8123" # Porta HTTP (quella che userà PySpark e Grafana)
+      - "9002:9000" # Porta Nativa
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse123
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+volumes:
+  clickhouse_data:
+  minio_data:
