@@ -94,7 +94,11 @@ def generate_receipt():
             discount = 30
         elif chance<20:
             discount = 20
-        price = round(catalogue[category][model] * discount,2)
+        chance2 = random.random() * 100
+        type=1
+        if chance2>97:
+            type=-1
+        price = round(type*catalogue[category][model] * discount,2)
         quantity = int(1 + (random.random()**2 * 5))
 
         items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size), "quantity": quantity})

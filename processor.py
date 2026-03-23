@@ -250,9 +250,9 @@ engineered_data = enriched_data.withColumn("transaction_type",
     .withColumn("net_profit",
         when(
             col("transaction_type") == "SALE", 
-            round((_abs(col("price")) - col("cost")) * col("quantity"), 2)
+            round((_abs(col("price")*col("quantity")) - col("cost"))*col("quantity"), 2)
         ).otherwise(
-            round(-1 * (_abs(col("price")) - col("cost")) * col("quantity"), 2)
+            round(-1 * (_abs(col("price")*col("quantity")) - col("cost"))*col("quantity"), 2)
         )
     )
 
@@ -326,13 +326,13 @@ store_checkout_stats = engineered_data \
         sum(col("net_profit")).alias("ck_net_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
         sum(when(col("transaction_type")=="SALE",col("price")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("price")*col("quantity"))
-            .otherwise(0)).alias("ck_net_revenue"),
+            .otherwise(0)).alias("ck_profit"),
         sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
-            .otherwise(0)).alias("ck_net_theoretic_revenue"),
+            .otherwise(0)).alias("ck_theoretic_profit"),
         sum(when(col("transaction_type")=="SALE",col("cost")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("cost")*col("quantity"))
-            .otherwise(0)).alias("ck_net_costs"),
+            .otherwise(0)).alias("ck_costs"),
         sum(when(col("transaction_type") == "SALE", col("quantity")).otherwise(0)).alias("ck_total_sales"),
         sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return"),
         sum(when(col("transaction_type") == "SALE", col("discount")).otherwise(0)).alias("total_discount"), # this has then to be divided by the quantity on the interface platform that does the graphics (if we do the average directly here for the checkout then it would not be possible to do so even for the stores)
@@ -343,7 +343,7 @@ store_checkout_stats = engineered_data \
     ) \
     .withColumn(
         "ck_net_margin",
-        ((col("ck_net_profit") - col("ck_net_costs"))/ col("ck_net_theoretic_revenue")) * 100
+        ((col("ck_profit") - col("ck_costs"))/ col("ck_theoretic_profit")) * 100
     )
 
 store_checkout_stats = store_checkout_stats.select(
@@ -357,9 +357,9 @@ store_checkout_stats = store_checkout_stats.select(
     col("checkout_type"),
     col("checkout_department"),
     col("ck_net_profit"),
-    col("ck_net_revenue"),
-    col("ck_net_theoretic_revenue"),
-    col("ck_net_costs"),
+    col("ck_profit"),
+    col("ck_theoretic_profit"),
+    col("ck_costs"),
     col("ck_total_sales"),
     col("ck_total_return"),
     col("total_discount"),
