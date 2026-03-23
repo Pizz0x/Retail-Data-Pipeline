@@ -12,10 +12,10 @@ spark_version = pyspark.__version__
 
 spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
-    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.13:{spark_version},"
+    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                                    f"org.apache.hadoop:hadoop-aws:3.3.4,"
                                    f"com.amazonaws:aws-java-sdk-bundle:1.12.262,"
-                                   f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.clickhouse:clickhouse-jdbc:0.4.6") \
+                                   f"com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
     .config("spark.hadoop.fs.s3a.access.key", "admin") \
     .config("spark.hadoop.fs.s3a.secret.key", "password123") \
     .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000") \
@@ -31,6 +31,7 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
     .config("spark.hadoop.fs.s3a.connection.ttl", "300000") \
     .config("spark.hadoop.fs.s3a.multipart.purge.age", "86400") \
+    .config("spark.sql.streaming.stopGracefullyOnShutdown", "true") \
     .getOrCreate()
     
 
@@ -132,7 +133,7 @@ receipt_data = receipt_data.withColumn("timestamp",
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
-    .withWatermark("timestamp", "10 minutes") \
+    .withWatermark("timestamp", "2 minutes") \
     .dropDuplicates(["receipt_id"])
 
 
@@ -244,7 +245,7 @@ engineered_data = enriched_data.withColumn("transaction_type",
         when(col("price")<0, "RETURN").otherwise("SALE")
     ) \
     .withColumn("discount",
-        round((col("list_price")-_abs(col("price"))*col("quantity")) / col("list_price") * 100,2)
+        round((col("list_price")-_abs(col("price"))) / col("list_price") * 100,2)
     ) \
     .withColumn("net_profit",
         when(
@@ -280,9 +281,8 @@ query_silver = engineered_data.writeStream \
 
 # check number of transactions for each type of payment in a given checkout / store
 live_transactions = engineered_data \
-    .withWatermark("timestamp", "5 minutes") \
     .groupBy(
-        window(col("timestamp"), "5 minutes"),
+        window(col("timestamp"), "2 minutes"),
         col("store"),
         col("checkout"),
         col("payment")
@@ -292,9 +292,8 @@ live_transactions = engineered_data \
 
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
 trending_article = engineered_data \
-    .withWatermark("timestamp", "30 minutes") \
     .groupBy(
-        window(col("timestamp"), "30 minutes", "10 minutes"),
+        window(col("timestamp"), "2 minutes", "1 minutes"),
         col("category"),
         col("model"),
         col("sex"),
@@ -313,9 +312,8 @@ trending_article = engineered_data \
 
 # check the checkout and so even the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
 store_checkout_stats = engineered_data \
-    .withWatermark("timestamp", "30 minutes") \
     .groupBy(
-        window(col("timestamp"), "30 minutes", "10 minutes"),
+        window(col("timestamp"), "3 minutes", "1 minutes"),
         col("store"),
         col("region"),
         col("loc_type"),
@@ -325,7 +323,7 @@ store_checkout_stats = engineered_data \
         col("checkout_department")
     ) \
     .agg(
-        sum(col("profit")).alias("ck_net_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
+        sum(col("net_profit")).alias("ck_net_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
         sum(when(col("transaction_type")=="SALE",col("price")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("price")*col("quantity"))
             .otherwise(0)).alias("ck_net_revenue"),
@@ -345,7 +343,7 @@ store_checkout_stats = engineered_data \
     ) \
     .withColumn(
         "ck_net_margin",
-        ((col("ck_net_profit") - col("ck_net_costs"))/ col("ck_net_theoretical_revenue")) * 100
+        ((col("ck_net_profit") - col("ck_net_costs"))/ col("ck_net_theoretic_revenue")) * 100
     )
 
 store_checkout_stats = store_checkout_stats.select(
@@ -370,20 +368,21 @@ store_checkout_stats = store_checkout_stats.select(
 )
 
 # function to write batch in the databases
-def write_on_clickhouse(df_batch, epoch_id, table_name):
+def write_on_clickhouse(df_batch, epoch_id):
     df_batch.write \
-        .format("jdbc") \
-        .mode("append") \
-        .option("driver", "com.clickhouse.jdbc.ClickHouseDriver") \
-        .option("url", "jdbc:clickhouse://localhost:8123/retail_stats") \
-        .option("dbtable", table_name) \
+        .format("clickhouse") \
+        .option("host", "localhost") \
+        .option("port", "8123") \
         .option("user", "default") \
         .option("password", "clickhouse123") \
+        .option("database", "retail_stats") \
+        .option("table", "checkout_analytics") \
+        .mode("append") \
         .save()
     
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
-    .foreachBatch(lambda df, epoch_id: write_on_clickhouse(df, epoch_id, "checkout_analytics")) \
+    .foreachBatch(write_on_clickhouse) \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/clickhouse_gold/") \
     .start()
 
