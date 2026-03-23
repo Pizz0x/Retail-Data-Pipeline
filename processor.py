@@ -89,6 +89,7 @@ kafka_data = spark \
     .option("kafka.bootstrap.servers", "localhost:9092") \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
+    .option("maxOffsetsPerTrigger", 50000) \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
 
