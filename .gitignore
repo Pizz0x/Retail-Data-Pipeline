@@ -12,3 +12,5 @@ _spark_metadata/
 
 data/*.txt
 minio_data
+
+python3 generator.py --store Rome1 --checkout 1
