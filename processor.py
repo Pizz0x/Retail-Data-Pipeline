@@ -316,7 +316,7 @@ article_stats = engineered_data \
     ) \
     .withColumn(
         "return_rate",
-        (col("returned_articles") / (col("sold_articles")+col("return_articles")))*100
+        (col("returned_articles") / (col("sold_articles")+col("returned_articles")))*100
     )
 
 article_stats = article_stats.select(
@@ -423,5 +423,4 @@ store_checkout_query = store_checkout_stats.writeStream \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkout/") \
     .start()
 
-# then for the analysis inherent not at the given period but in general we can check the item that is g
 spark.streams.awaitAnyTermination()

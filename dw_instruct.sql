@@ -26,6 +26,7 @@ ENGINE = MergeTree()
 ORDER BY (window_start, store, checkout)
 
 
+
 CREATE TABLE retail_stats.payment_analytics
 (
     store String,
@@ -39,3 +40,19 @@ ENGINE = MergeTree()
 ORDER BY (window_start, store, checkout, payment)
 
 
+
+CREATE TABLE retail_stats.article_analytics
+(
+    category String,
+    model String,
+    sex String,
+    store String,
+    window_start DateTime,
+    window_end DateTime,
+    supplier String,
+    sold_articles Int32,
+    returned_articles Int32,
+    return_rate Float64,
+)
+ENGINE = MergeTree()
+ORDER BY (window_start, category, model, sex, store)
