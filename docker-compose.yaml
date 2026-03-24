@@ -21,6 +21,8 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
 
   minio:
     image: minio/minio
@@ -53,5 +55,6 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
 volumes:
+  kafka_data:
   clickhouse_data:
   minio_data:

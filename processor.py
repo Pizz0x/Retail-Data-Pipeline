@@ -251,9 +251,9 @@ engineered_data = enriched_data.withColumn("transaction_type",
     .withColumn("net_profit",
         when(
             col("transaction_type") == "SALE", 
-            round((_abs(col("price")*col("quantity")) - col("cost"))*col("quantity"), 2)
+            round(col("price")*col("quantity") - col("cost")*col("quantity"), 2)
         ).otherwise(
-            round(-1 * (_abs(col("price")*col("quantity")) - col("cost"))*col("quantity"), 2)
+            round(-col("price")*col("quantity") + col("cost")*col("quantity"), 2)
         )
     )
 
@@ -280,19 +280,27 @@ query_silver = engineered_data.writeStream \
 
 ### STATEFUL AGGREGATIONS
 
-# check number of transactions for each type of payment in a given checkout / store
-live_transactions = engineered_data \
+# check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data)
+payment_stats = receipt_data \
     .groupBy(
         window(col("timestamp"), "2 minutes"),
         col("store"),
         col("checkout"),
         col("payment")
     ) \
-    .agg(count("*").alias("transaction_number"))
+    .agg(count("*").alias("receipt_number"))
 
+payment_stats = payment_stats.select(
+    col("store"),
+    col("checkout"),
+    col("payment"),
+    col("window.start").alias("window_start"),
+    col("window.end").alias("window_end"),
+    col("receipt_number")
+)
 
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
-trending_article = engineered_data \
+article_stats = engineered_data \
     .groupBy(
         window(col("timestamp"), "2 minutes", "1 minutes"),
         col("category"),
@@ -303,15 +311,29 @@ trending_article = engineered_data \
     ) \
     .agg(
         sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
-        sum(col("net_profit")).alias("profit_articles"),  # profit is already computed on the quantity of articles sold and is negative in case of return
-        sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("return_articles"),
+        sum(col("net_profit")).alias("net_profit_articles"),  # profit is already computed on the quantity of articles sold and is negative in case of return
+        sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("returned_articles"),
     ) \
     .withColumn(
         "return_rate",
-        (col("return_articles") / (col("sold_articles")+col("return_articles")))*100
+        (col("returned_articles") / (col("sold_articles")+col("return_articles")))*100
     )
 
+article_stats = article_stats.select(
+    col("category"),
+    col("model"),
+    col("sex"),
+    col("store"),
+    col("window.start").alias("window_start"),
+    col("window.end").alias("window_end"),
+    col("supplier"),
+    col("sold_articles"),
+    col("returned_articles"),
+    col("return_rate")
+)
+
 # check the checkout and so even the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
+# we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
 store_checkout_stats = engineered_data \
     .groupBy(
         window(col("timestamp"), "3 minutes", "1 minutes"),
@@ -331,12 +353,12 @@ store_checkout_stats = engineered_data \
         sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
             .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
             .otherwise(0)).alias("ck_theoretic_profit"),
-        sum(when(col("transaction_type")=="SALE",col("cost")*col("quantity"))
-            .when(col("transaction_type")=="RETURN", -col("cost")*col("quantity"))
+        sum(when(col("transaction_type")=="SALE",-col("cost")*col("quantity"))
+            .when(col("transaction_type")=="RETURN", col("cost")*col("quantity"))
             .otherwise(0)).alias("ck_costs"),
         sum(when(col("transaction_type") == "SALE", col("quantity")).otherwise(0)).alias("ck_total_sales"),
         sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return"),
-        sum(when(col("transaction_type") == "SALE", col("discount")).otherwise(0)).alias("total_discount"), # this has then to be divided by the quantity on the interface platform that does the graphics (if we do the average directly here for the checkout then it would not be possible to do so even for the stores)
+        sum(when(col("transaction_type") == "SALE", col("discount")).otherwise(0)).alias("total_discount") # this has then to be divided by the quantity on the interface platform that does the graphics (if we do the average directly here for the checkout then it would not be possible to do so even for the stores)
     ) \
     .withColumn(
         "ck_return_rate",
@@ -344,7 +366,7 @@ store_checkout_stats = engineered_data \
     ) \
     .withColumn(
         "ck_net_margin",
-        ((col("ck_profit") - col("ck_costs"))/ col("ck_theoretic_profit")) * 100
+        ((col("ck_profit") + col("ck_costs"))/ col("ck_theoretic_profit")) * 100
     )
 
 store_checkout_stats = store_checkout_stats.select(
@@ -369,22 +391,36 @@ store_checkout_stats = store_checkout_stats.select(
 )
 
 # function to write batch in the databases
-def write_on_clickhouse(df_batch, epoch_id):
-    df_batch.write \
-        .format("clickhouse") \
-        .option("host", "localhost") \
-        .option("port", "8123") \
-        .option("user", "default") \
-        .option("password", "clickhouse123") \
-        .option("database", "retail_stats") \
-        .option("table", "checkout_analytics") \
-        .mode("append") \
-        .save()
+def clickhouse_writer(table_name):
+    def write_on_table(df_batch, epoch_id):
+        df_batch.write \
+            .format("clickhouse") \
+            .option("host", "localhost") \
+            .option("port", "8123") \
+            .option("user", "default") \
+            .option("password", "clickhouse123") \
+            .option("database", "retail_stats") \
+            .option("table", table_name) \
+            .mode("append") \
+            .save()
+    return write_on_table
     
+payment_query = payment_stats.writeStream \
+    .outputMode("append") \
+    .foreachBatch(clickhouse_writer("payment_analytics")) \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/payment/") \
+    .start()
+
+article_store_query = article_stats.writeStream \
+    .outputMode("append") \
+    .foreachBatch(clickhouse_writer("article_analytics")) \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/article/") \
+    .start()
+
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
-    .foreachBatch(write_on_clickhouse) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/clickhouse_gold/") \
+    .foreachBatch(clickhouse_writer("checkout_analytics")) \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkout/") \
     .start()
 
 # then for the analysis inherent not at the given period but in general we can check the item that is g
