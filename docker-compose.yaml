@@ -39,7 +39,6 @@ services:
     volumes:
       - minio_data:/data  # Salva i file fisicamente in una cartella sul tuo PC
 
-
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse-gold
@@ -56,7 +55,23 @@ services:
         hard: 262144
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana123
+    depends_on:
+      - clickhouse
+    volumes:
+      - grafana_data:/var/lib/grafana
+
 volumes:
   kafka_data:
   clickhouse_data:
   minio_data:
+  grafana_data:
