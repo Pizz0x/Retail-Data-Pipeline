@@ -12,6 +12,10 @@ spark_version = pyspark.__version__
 
 spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
+    .config("spark.driver.memory", "4g") \
+    .config("spark.executor.memory", "4g") \
+    .config("spark.memory.offHeap.enabled", "true") \
+    .config("spark.memory.offHeap.size", "512m") \
     .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                                    f"org.apache.hadoop:hadoop-aws:3.3.4,"
                                    f"com.amazonaws:aws-java-sdk-bundle:1.12.262,"
@@ -89,7 +93,7 @@ kafka_data = spark \
     .option("kafka.bootstrap.servers", "localhost:9092") \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
-    .option("maxOffsetsPerTrigger", 50000) \
+    .option("maxOffsetsPerTrigger", 5000) \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
 
@@ -134,7 +138,7 @@ receipt_data = receipt_data.withColumn("timestamp",
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
-    .withWatermark("timestamp", "2 minutes") \
+    .withWatermark("timestamp", "30 seconds") \
     .dropDuplicates(["receipt_id"])
 
 
@@ -283,7 +287,7 @@ query_silver = engineered_data.writeStream \
 # check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data)
 payment_stats = receipt_data \
     .groupBy(
-        window(col("timestamp"), "2 minutes"),
+        window(col("timestamp"), "30 seconds"),
         col("store"),
         col("checkout"),
         col("payment")
@@ -302,7 +306,7 @@ payment_stats = payment_stats.select(
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
 article_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "2 minutes", "1 minutes"),
+        window(col("timestamp"), "30 seconds", "15 seconds"),
         col("category"),
         col("model"),
         col("sex"),
@@ -328,6 +332,7 @@ article_stats = article_stats.select(
     col("window.end").alias("window_end"),
     col("supplier"),
     col("sold_articles"),
+    col("net_profit_articles"),
     col("returned_articles"),
     col("return_rate")
 )
@@ -336,7 +341,7 @@ article_stats = article_stats.select(
 # we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
 store_checkout_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "3 minutes", "1 minutes"),
+        window(col("timestamp"), "30 seconds", "10 seconds"),
         col("store"),
         col("region"),
         col("loc_type"),
@@ -391,35 +396,60 @@ store_checkout_stats = store_checkout_stats.select(
 )
 
 # function to write batch in the databases
-def clickhouse_writer(table_name):
-    def write_on_table(df_batch, epoch_id):
-        df_batch.write \
-            .format("clickhouse") \
-            .option("host", "localhost") \
-            .option("port", "8123") \
-            .option("user", "default") \
-            .option("password", "clickhouse123") \
-            .option("database", "retail_stats") \
-            .option("table", table_name) \
-            .mode("append") \
-            .save()
-    return write_on_table
+def ch_payment(df_batch, epoch_id):
+    df_batch.write \
+        .format("clickhouse") \
+        .option("host", "localhost") \
+        .option("port", "8123") \
+        .option("user", "default") \
+        .option("password", "clickhouse123") \
+        .option("database", "retail_stats") \
+        .option("table", "payment_analytics") \
+        .option("batchSize", "5000") \
+        .mode("append") \
+        .save()
     
 payment_query = payment_stats.writeStream \
     .outputMode("append") \
-    .foreachBatch(clickhouse_writer("payment_analytics")) \
+    .foreachBatch(ch_payment) \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/payment/") \
     .start()
 
+def ch_article(df_batch, epoch_id):
+    df_batch.write \
+        .format("clickhouse") \
+        .option("host", "localhost") \
+        .option("port", "8123") \
+        .option("user", "default") \
+        .option("password", "clickhouse123") \
+        .option("database", "retail_stats") \
+        .option("table", "article_analytics") \
+        .option("batchSize", "5000") \
+        .mode("append") \
+        .save()
+
 article_store_query = article_stats.writeStream \
     .outputMode("append") \
-    .foreachBatch(clickhouse_writer("article_analytics")) \
+    .foreachBatch(ch_article) \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/article/") \
     .start()
 
+def ch_checkout(df_batch, epoch_id):
+    df_batch.write \
+        .format("clickhouse") \
+        .option("host", "localhost") \
+        .option("port", "8123") \
+        .option("user", "default") \
+        .option("password", "clickhouse123") \
+        .option("database", "retail_stats") \
+        .option("table", "checkout_analytics") \
+        .option("batchSize", "5000") \
+        .mode("append") \
+        .save()
+
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
-    .foreachBatch(clickhouse_writer("checkout_analytics")) \
+    .foreachBatch(ch_checkout) \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkout/") \
     .start()
 

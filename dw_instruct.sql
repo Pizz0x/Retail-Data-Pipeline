@@ -51,6 +51,7 @@ CREATE TABLE retail_stats.article_analytics
     window_end DateTime,
     supplier String,
     sold_articles Int32,
+    net_profit_articles Float64,
     returned_articles Int32,
     return_rate Float64,
 )
