@@ -89,11 +89,11 @@ def generate_receipt():
         chance = random.random() * 100
         discount = 0
         if chance<5:
-            discount = 40
+            discount = 0.40
         elif chance<10:
-            discount = 30
+            discount = 0.30
         elif chance<20:
-            discount = 20
+            discount = 0.20
         chance2 = random.random() * 100
         type=1
         if chance2>95:
