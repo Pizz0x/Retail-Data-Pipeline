@@ -138,7 +138,7 @@ receipt_data = receipt_data.withColumn("timestamp",
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
-    .withWatermark("timestamp", "30 seconds") \
+    .withWatermark("timestamp", "5 minutes") \
     .dropDuplicates(["receipt_id"])
 
 
@@ -287,7 +287,7 @@ query_silver = engineered_data.writeStream \
 # check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data)
 payment_stats = receipt_data \
     .groupBy(
-        window(col("timestamp"), "30 seconds"),
+        window(col("timestamp"), "5 minutes"),
         col("store"),
         col("checkout"),
         col("payment")
@@ -306,7 +306,7 @@ payment_stats = payment_stats.select(
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
 article_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "30 seconds", "15 seconds"),
+        window(col("timestamp"), "10 minutes", "5 minutes"),
         col("category"),
         col("model"),
         col("sex"),
@@ -341,7 +341,7 @@ article_stats = article_stats.select(
 # we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
 store_checkout_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "30 seconds", "10 seconds"),
+        window(col("timestamp"), "10 minutes", "5 minutes"),
         col("store"),
         col("region"),
         col("loc_type"),
