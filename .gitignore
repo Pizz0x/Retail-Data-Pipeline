@@ -13,4 +13,4 @@ _spark_metadata/
 data/*.txt
 minio_data
 
-python3 generator.py --store Turin1 --checkout 1
+logs/

@@ -1,4 +1,7 @@
 from airflow import DAG
+from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.operators.email import EmailOperator
 from datetime import datetime, timedelta
 
 email = 'saspizzox@gmail.com'
