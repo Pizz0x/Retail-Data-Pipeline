@@ -276,6 +276,7 @@ engineered_data = engineered_data.withColumn(
 query_silver = engineered_data.writeStream \
     .outputMode("append") \
     .format("parquet") \
+    .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
     .option("checkpointLocation", "s3a://retail.datalake/checkpoints/silver/") \
     .start()
