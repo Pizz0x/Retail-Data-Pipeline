@@ -81,7 +81,7 @@ def main():
     daily_data.write \
         .mode("append") \
         .format("clickhouse") \
-        .option("host", "localhost") \
+        .option("host", "clickhouse") \
         .option("port", "8123") \
         .option("database", "retail_stats") \
         .option("table", "daily_data") \
