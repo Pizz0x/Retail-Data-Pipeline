@@ -13,12 +13,10 @@ CREATE TABLE retail_stats.checkout_analytics
     checkout_type String,
     checkout_department String,
     ck_net_profit Float64,
-    ck_profit Float64,
-    ck_theoretic_profit Float64,
     ck_costs Float64,
     ck_total_sales Int32,
     ck_total_return Int32,
-    total_discount Float64,
+    ck_discount Float64,
     ck_return_rate Float64,
     ck_net_margin Float64
 )

@@ -372,8 +372,14 @@ store_checkout_stats = engineered_data \
     ) \
     .withColumn(
         "ck_net_margin",
-        ((col("ck_profit") + col("ck_costs"))/ col("ck_theoretic_profit")) * 100
-    )
+        (col("ck_net_profit")/ col("ck_theoretic_profit")) * 100
+    ) \
+    .withColumn(
+        "ck_discount",
+        col("total_discount") / col("ck_total_sales")
+    ) \
+    .drop("total_discount", "ck_theoretic_profit") \
+    .fillna(0, subset=["ck_return_rate", "ck_net_margin", "ck_discount"])
 
 store_checkout_stats = store_checkout_stats.select(
     col("store"),
