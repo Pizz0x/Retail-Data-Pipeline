@@ -55,3 +55,25 @@ CREATE TABLE retail_stats.article_analytics
 )
 ENGINE = MergeTree()
 ORDER BY (window_start, category, model, sex, store)
+
+CREATE TABLE retail_stats.daily_data
+(
+    category String,
+    model String,
+    sex String,
+    supplier String,
+    store String,
+    region String,
+    loc_type String,
+    square_footage String,
+    day_of_week String,
+    sold_articles Int32,
+    net_profit Float64,
+    returned_articles Int32,
+    costs Float64,
+    return_rate Float64,
+    net_margin Float64,
+    date Date
+)
+ENGINE = MergeTree()
+ORDER BY (date, category, model, sex, store)

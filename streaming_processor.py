@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from functools import reduce
 from pyspark.sql.window import Window
 from operator import or_
-from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, sum, count, hour, month, round, date_format, window
+from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, sum, count, hour, month, year, day, round, date_format, window
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
 
 # create the spark session and configure the kafka connector
@@ -138,7 +138,7 @@ receipt_data = receipt_data.withColumn("timestamp",
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
-    .withWatermark("timestamp", "5 minutes") \
+    .withWatermark("timestamp", "1 minutes") \
     .dropDuplicates(["receipt_id"])
 
 
@@ -268,7 +268,13 @@ engineered_data = engineered_data.withColumn(
         "day_of_week", date_format(col("timestamp"), "EEEE")
     ) \
     .withColumn(
+        "day", day(col("timestamp"))
+    ) \
+    .withColumn(
         "month", month(col("timestamp"))
+    ) \
+    .withColumn(
+        "year", year(col("timestamp"))
     )
 
 ### SILVER LEVEL SINK -> cleaned and processed data 
@@ -288,7 +294,7 @@ query_silver = engineered_data.writeStream \
 # check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data)
 payment_stats = receipt_data \
     .groupBy(
-        window(col("timestamp"), "5 minutes"),
+        window(col("timestamp"), "1 minutes"),
         col("store"),
         col("checkout"),
         col("payment")
@@ -307,7 +313,7 @@ payment_stats = payment_stats.select(
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
 article_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "10 minutes", "5 minutes"),
+        window(col("timestamp"), "1 minutes", "30 seconds"),
         col("category"),
         col("model"),
         col("sex"),
@@ -342,7 +348,7 @@ article_stats = article_stats.select(
 # we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
 store_checkout_stats = engineered_data \
     .groupBy(
-        window(col("timestamp"), "10 minutes", "5 minutes"),
+        window(col("timestamp"), "1 minutes", "30 seconds"),
         col("store"),
         col("region"),
         col("loc_type"),
@@ -392,12 +398,10 @@ store_checkout_stats = store_checkout_stats.select(
     col("checkout_type"),
     col("checkout_department"),
     col("ck_net_profit"),
-    col("ck_profit"),
-    col("ck_theoretic_profit"),
     col("ck_costs"),
     col("ck_total_sales"),
     col("ck_total_return"),
-    col("total_discount"),
+    col("ck_discount"),
     col("ck_return_rate"),
     col("ck_net_margin")
 )
@@ -461,3 +465,5 @@ store_checkout_query = store_checkout_stats.writeStream \
     .start()
 
 spark.streams.awaitAnyTermination()
+
+# python3 generator.py --store Rome1 --checkout 2

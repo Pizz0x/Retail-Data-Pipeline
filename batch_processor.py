@@ -47,6 +47,7 @@ def main():
             col("region"),
             col("loc_type"),
             col("square_footage"),
+            col("day_of_week")
         ) \
         .agg(
             sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
@@ -70,7 +71,7 @@ def main():
         ) \
         .withColumn(
             "date",
-            lit(execution_date)
+            lit(execution_date).cast("date")
         ) \
         .drop("theoretic_profit") \
         .fillna(0, subset=["return_rate", "net_margin"])

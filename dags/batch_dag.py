@@ -18,8 +18,9 @@ default_args = {
 with DAG(
     dag_id = 'Retail_Data_Pipeline',
     default_args = default_args,
-    start_date = datetime(2026,3,30),
+    start_date = datetime(2026,4,1),
     schedule_interval = '0 2 * * *',
+    catchup=False
 ) as dag:
     
     # wait that the folder of today exists on MinIO
