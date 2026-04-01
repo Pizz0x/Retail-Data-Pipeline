@@ -29,6 +29,7 @@ with DAG(
         bucket_name='retail.datalake',
         bucket_key='silver/receipts/year={{ execution_date.year }}/month={{ execution_date.month }}/day={{ execution_date.day }}/*',
         aws_conn_id='minio_s3_conn', # connection to minio on airflow
+        wildcard_match=True,
         poke_interval=60 * 10, # check every 10 minutes
         timeout=60 * 60 * 2,  # forfeit after 2 hours
         mode='poke'
