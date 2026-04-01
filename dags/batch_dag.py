@@ -44,7 +44,7 @@ with DAG(
 
     batch_aggregations = SparkSubmitOperator(
         task_id = 'batch_aggregations',
-        application = 'batch_processor.py',
+        application = '../batch_processor.py',
         conn_id = 'spark_default',
         application_args = ['--date', '{{ds}}'],
         conf = {'spark.master': 'local[*]'}

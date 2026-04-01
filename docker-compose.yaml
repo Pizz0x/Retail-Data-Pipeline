@@ -1,6 +1,6 @@
 x-airflow-common: # base model for apache airflow that is gonna be used in every airflow-service
   &airflow-common
-  image: apache/airflow:2.8.2
+  build: .
   environment:
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -92,11 +92,14 @@ services:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
+
 
   # Qused to create the database and admin user (executed only the first time)
   airflow-init:
@@ -144,3 +147,4 @@ volumes:
   clickhouse_data:
   minio_data:
   grafana_data:
+  postgres_data:
