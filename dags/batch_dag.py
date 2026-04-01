@@ -46,9 +46,10 @@ with DAG(
 
     batch_aggregations = SparkSubmitOperator(
         task_id = 'batch_aggregations',
-        application = '../batch_processor.py',
+        application = '/opt/airflow/dags/batch_processor.py',
         conn_id = 'spark_default',
         application_args = ['--date', '{{ds}}'],
+        packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
         conf = {'spark.master': 'local[*]'}
     )
     sensor >> batch_aggregations >> success_mail

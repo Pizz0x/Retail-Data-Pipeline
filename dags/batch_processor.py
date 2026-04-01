@@ -1,6 +1,6 @@
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, lit
+from pyspark.sql.functions import col, when, lit, sum as _sum
 
 def main():
     parser = argparse.ArgumentParser()
@@ -50,13 +50,13 @@ def main():
             col("day_of_week")
         ) \
         .agg(
-            sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
-            sum(col("net_profit")).alias("net_profit"),  # profit is already computed on the quantity of articles sold and is negative in case of return
-            sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("returned_articles"),
-            sum(when(col("transaction_type")=="SALE",-col("cost")*col("quantity"))
+            _sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
+            _sum(col("net_profit")).alias("net_profit"),  # profit is already computed on the quantity of articles sold and is negative in case of return
+            _sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("returned_articles"),
+            _sum(when(col("transaction_type")=="SALE",-col("cost")*col("quantity"))
                 .when(col("transaction_type")=="RETURN", col("cost")*col("quantity"))
                 .otherwise(0)).alias("costs"),
-            sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
+            _sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
                 .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
                 .otherwise(0)).alias("theoretic_profit"),
             
