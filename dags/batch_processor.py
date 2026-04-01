@@ -22,7 +22,7 @@ def main():
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
+        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
         .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
@@ -79,18 +79,29 @@ def main():
     daily_data.show()
 
 
+    # daily_data.write \
+    #     .mode("append") \
+    #     .format("clickhouse") \
+    #     .option("host", "clickhouse") \
+    #     .option("port", "8123") \
+    #     .option("database", "retail_stats") \
+    #     .option("table", "daily_data") \
+    #     .option("user", "default") \
+    #     .option("password", "clickhouse123") \
+    #     .option("batchsize", "5000") \
+    #     .save()
+
     daily_data.write \
-        .mode("append") \
         .format("clickhouse") \
-        .option("host", "clickhouse") \
+        .option("host", "clickhouse-gold") \
         .option("port", "8123") \
-        .option("database", "retail_stats") \
-        .option("table", "daily_data") \
         .option("user", "default") \
         .option("password", "clickhouse123") \
-        .option("batchsize", "5000") \
+        .option("database", "retail_stats") \
+        .option("table", "daily_data") \
+        .option("batchSize", "5000") \
+        .mode("append") \
         .save()
-    
     print("Batch Pipeline completed !!")
     spark.stop()
 

@@ -4,11 +4,12 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 from airflow.operators.email import EmailOperator
 from datetime import datetime, timedelta
 
-email = 'saspizzox@gmail.com'
+from_email = 'retail.alert67@gmail.com'
+to_email = 'saspizzox@gmail.com'
 
 default_args = {
     'owner': 'Pizz0x',
-    'email': [email],
+    'email': [from_email],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 2,
@@ -38,7 +39,7 @@ with DAG(
     # send a mail to the user in case of success (only if Spark works fine, indeed thanks to the configuration in case of failure airflow already send an email)
     success_mail = EmailOperator(
         task_id='success_mail',
-        to=email,
+        to=to_email,
         subject='[SUCCESS] Batch Aggregation',
         html_content = '<h3>Good News !!</h3><p>Data of day {{ ds }} have been succesfully aggregated on Clickhouse and are reasy to be used.</p>'
 
@@ -49,7 +50,7 @@ with DAG(
         application = '/opt/airflow/dags/batch_processor.py',
         conn_id = 'spark_default',
         application_args = ['--date', '{{ds}}'],
-        packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
+        packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5',
         conf = {'spark.master': 'local[*]'}
     )
     sensor >> batch_aggregations >> success_mail
