@@ -1,3 +1,4 @@
+# used to tell to Grafana where to find the JSON with the implemented configurations
 apiVersion: 1
 providers:
   - name: 'Retail Dashboards'

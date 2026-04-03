@@ -1,10 +1,11 @@
+# used to help Grafana connects to Clickhouse
 apiVersion: 1
 datasources:
   - name: ClickHouse
     type: grafana-clickhouse-datasource
-    user: default
+    user: ${CH_USER}
     secureJsonData:
-      password: "clickhouse123"
+      password: ${CH_PASSWORD}
     jsonData:
       server: "clickhouse"           
       port: 8123                     

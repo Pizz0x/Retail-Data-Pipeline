@@ -16,7 +16,7 @@ x-airflow-common: # base model for apache airflow that is gonna be used in every
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
+    - ./plugins:/opt/airflow/plugins  # useful in case of custom operators or for connection to non-conventional APIs
     - ./scripts:/opt/airflow/scripts
   depends_on:
     postgres:
@@ -87,6 +87,8 @@ services:
       - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
       - GF_SECURITY_ADMIN_USER=${GF_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_PASSWORD}
+      - CH_USER=${CH_USER}
+      - CH_PASSWORD=${CH_PASSWORD}
     depends_on:
       - clickhouse
     volumes:
@@ -109,7 +111,7 @@ services:
       start_period: 5s
 
 
-  # Qused to create the database and admin user (executed only the first time)
+  # Airflow Init is used to create the database and admin user (executed only the first time, then we exploit volumes)
   airflow-init:
     <<: *airflow-common
     command: version
