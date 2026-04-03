@@ -14,3 +14,5 @@ data/*.txt
 minio_data
 
 logs/
+
+.env

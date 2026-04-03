@@ -3,6 +3,7 @@ from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.operators.email import EmailOperator
 from datetime import datetime, timedelta
+import os
 
 from_email = 'retail.alert67@gmail.com'
 to_email = 'saspizzox@gmail.com'
@@ -51,6 +52,10 @@ with DAG(
         conn_id = 'spark_default',
         application_args = ['--date', '{{ds}}'],
         packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5',
-        conf = {'spark.master': 'local[*]'}
+        conf = {'spark.master': 'local[*]'},
+        env_vars={
+            'S3_USER': os.environ.get('S3_USER', 'user'),
+            'S3_PASSWORD': os.environ.get('S3_PASSWORD', 'password'),
+        }
     )
     sensor >> batch_aggregations >> success_mail

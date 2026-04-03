@@ -5,6 +5,15 @@ from pyspark.sql.window import Window
 from operator import or_
 from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, sum, count, hour, month, year, day, round, date_format, window
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
+import os
+from dotenv import load_dotenv, find_dotenv
+
+# search for the .env file and load the variables in the script
+load_dotenv(find_dotenv())
+s3_user = os.environ.get("S3_USER", "user")
+s3_pass = os.environ.get("S3_PASSWORD", "password")
+ch_user = os.environ.get("CH_USER", "user")
+ch_pass = os.environ.get("CH_PASSWORD", "password")
 
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
@@ -20,8 +29,8 @@ spark = SparkSession.builder \
                                    f"org.apache.hadoop:hadoop-aws:3.3.4,"
                                    f"com.amazonaws:aws-java-sdk-bundle:1.12.262,"
                                    f"com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
-    .config("spark.hadoop.fs.s3a.access.key", "admin") \
-    .config("spark.hadoop.fs.s3a.secret.key", "password123") \
+    .config("spark.hadoop.fs.s3a.access.key", s3_user) \
+    .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
     .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000") \
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
@@ -412,8 +421,8 @@ def ch_payment(df_batch, epoch_id):
         .format("clickhouse") \
         .option("host", "localhost") \
         .option("port", "8123") \
-        .option("user", "default") \
-        .option("password", "clickhouse123") \
+        .option("user", ch_user) \
+        .option("password", ch_pass) \
         .option("database", "retail_stats") \
         .option("table", "payment_analytics") \
         .option("batchSize", "5000") \
@@ -431,8 +440,8 @@ def ch_article(df_batch, epoch_id):
         .format("clickhouse") \
         .option("host", "localhost") \
         .option("port", "8123") \
-        .option("user", "default") \
-        .option("password", "clickhouse123") \
+        .option("user", ch_user) \
+        .option("password", ch_pass) \
         .option("database", "retail_stats") \
         .option("table", "article_analytics") \
         .option("batchSize", "5000") \
@@ -450,8 +459,8 @@ def ch_checkout(df_batch, epoch_id):
         .format("clickhouse") \
         .option("host", "localhost") \
         .option("port", "8123") \
-        .option("user", "default") \
-        .option("password", "clickhouse123") \
+        .option("user", ch_user) \
+        .option("password", ch_pass) \
         .option("database", "retail_stats") \
         .option("table", "checkout_analytics") \
         .option("batchSize", "5000") \

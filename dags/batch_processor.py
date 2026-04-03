@@ -1,4 +1,4 @@
-import argparse
+import argparse, os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, when, lit, sum as _sum
 
@@ -10,6 +10,9 @@ def main():
     execution_date = args.date
     print(f"Elaboration of the batch for date: {execution_date}")
 
+    s3_user = os.environ.get("S3_USER", "user")
+    s3_pass = os.environ.get("S3_PASSWORD", "password")
+
     y,m,d = execution_date.split('-')
     m = str(int(m)) 
     d = str(int(d))
@@ -17,8 +20,8 @@ def main():
     spark = SparkSession.builder \
         .appName(f"Batch_Processor_{execution_date}") \
         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-        .config("spark.hadoop.fs.s3a.access.key", "admin") \
-        .config("spark.hadoop.fs.s3a.secret.key", "password123") \
+        .config("spark.hadoop.fs.s3a.access.key", s3_user) \
+        .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
@@ -77,19 +80,6 @@ def main():
         .fillna(0, subset=["return_rate", "net_margin"])
 
     daily_data.show()
-
-
-    # daily_data.write \
-    #     .mode("append") \
-    #     .format("clickhouse") \
-    #     .option("host", "clickhouse") \
-    #     .option("port", "8123") \
-    #     .option("database", "retail_stats") \
-    #     .option("table", "daily_data") \
-    #     .option("user", "default") \
-    #     .option("password", "clickhouse123") \
-    #     .option("batchsize", "5000") \
-    #     .save()
 
     daily_data.write \
         .format("clickhouse") \
