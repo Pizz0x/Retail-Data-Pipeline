@@ -48,7 +48,7 @@ with DAG(
 
     batch_aggregations = SparkSubmitOperator(
         task_id = 'batch_aggregations',
-        application = '/opt/airflow/dags/batch_processor.py',
+        application = '/opt/airflow/scripts/batch_processor.py',
         conn_id = 'spark_default',
         application_args = ['--date', '{{ds}}'],
         packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5',

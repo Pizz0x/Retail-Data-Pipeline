@@ -17,6 +17,7 @@ x-airflow-common: # base model for apache airflow that is gonna be used in every
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
   depends_on:
     postgres:
       condition: service_healthy
