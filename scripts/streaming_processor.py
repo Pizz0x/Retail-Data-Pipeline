@@ -102,6 +102,7 @@ kafka_data = spark \
     .option("kafka.bootstrap.servers", "localhost:9092") \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
+    .option("failOnDataLoss", "false") \
     .option("maxOffsetsPerTrigger", 5000) \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
@@ -115,7 +116,7 @@ query_bronze = bronze_data.writeStream \
     .outputMode("append") \
     .format("parquet") \
     .option("path", "s3a://retail.datalake/bronze/receipts/") \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/bronze/") \
+    .option("checkpointLocation", "./tmp/checkpoints/bronze/") \
     .start()
 # the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
 
@@ -293,7 +294,7 @@ query_silver = engineered_data.writeStream \
     .format("parquet") \
     .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/silver/") \
+    .option("checkpointLocation", "./tmp/checkpoints/silver/") \
     .start()
 
 
@@ -432,7 +433,7 @@ def ch_payment(df_batch, epoch_id):
 payment_query = payment_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_payment) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/payment/") \
+    .option("checkpointLocation", "./tmp/checkpoints/gold/payments") \
     .start()
 
 def ch_article(df_batch, epoch_id):
@@ -451,7 +452,7 @@ def ch_article(df_batch, epoch_id):
 article_store_query = article_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_article) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/article/") \
+    .option("checkpointLocation", "./tmp/checkpoints/gold/articles/") \
     .start()
 
 def ch_checkout(df_batch, epoch_id):
@@ -470,9 +471,9 @@ def ch_checkout(df_batch, epoch_id):
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_checkout) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkout/") \
+    .option("checkpointLocation", "./tmp/checkpoints/gold/checkouts/") \
     .start()
 
 spark.streams.awaitAnyTermination()
 
-# python3 generator.py --store Rome1 --checkout 2
+# python3 ./scripts/generator.py --store Rome1 --checkout 2

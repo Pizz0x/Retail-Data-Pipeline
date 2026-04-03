@@ -16,3 +16,5 @@ minio_data
 logs/
 
 .env
+
+tmp/

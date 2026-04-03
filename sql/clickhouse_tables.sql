@@ -77,3 +77,8 @@ CREATE TABLE retail_stats.daily_data
 )
 ENGINE = MergeTree()
 ORDER BY (date, category, model, sex, store)
+
+delete from retail_stats.article_analytics where 1=1;
+delete from retail_stats.checkout_analytics where 1=1;
+delete from retail_stats.payment_analytics where 1=1;
+delete from retail_stats.daily_data where 1=1;
