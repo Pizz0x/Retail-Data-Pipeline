@@ -140,7 +140,7 @@ try:
         )
         producer.poll(0) # check if the buffer still has data that we are sure are delivered correctly and remove them
 
-        time.sleep(random.uniform(10.0, 20.0))
+        time.sleep(random.uniform(1.0, 2.0))
 except KeyboardInterrupt:
     print("The Checkout has closed")
 finally:
