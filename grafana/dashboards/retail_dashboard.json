@@ -23,6 +23,111 @@
         {
             "datasource": {
                 "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+            },
+            "id": 6,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+                {
+                    "editorType": "sql",
+                    "format": 1,
+                    "meta": {
+                        "builderOptions": {
+                            "columns": [],
+                            "database": "",
+                            "limit": 1000,
+                            "mode": "list",
+                            "queryType": "table",
+                            "table": ""
+                        }
+                    },
+                    "pluginVersion": "4.14.0",
+                    "queryType": "table",
+                    "rawSql": "SELECT \r\n    window_start AS time,\r\n    store, \r\n    checkout,\r\n    countIf(payment = 'cash') AS cash_payments,\r\n    countIf(payment = 'card') AS card_payments,\r\n    countIf(payment = 'gift card') AS gift_payments\r\nFROM retail_stats.payment_analytics\r\nWHERE $__timeFilter(window_start)\r\n  AND store = '$unique_store' \r\n  AND checkout IN ($checkout)\r\nGROUP BY store, checkout, window_start\r\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Payment methods in Store $unique_store",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana-clickhouse-datasource",
                 "uid": "afh42mw9q12bkf"
             },
             "fieldConfig": {
@@ -174,7 +279,7 @@
             "gridPos": {
                 "h": 8,
                 "w": 12,
-                "x": 0,
+                "x": 12,
                 "y": 0
             },
             "id": 4,
@@ -208,11 +313,130 @@
                     },
                     "pluginVersion": "4.14.0",
                     "queryType": "table",
-                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    checkout AS metric,\r\n    ck_return_rate AS return_rate,\r\n    total_discount AS discount\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store IN '$unique_store' AND checkout IN $checkout\r\nORDER BY time, metric",
+                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    checkout AS metric,\r\n    ck_return_rate AS return_rate,\r\n    ck_discount AS discount\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store IN '$unique_store' AND checkout = [${checkout:singlequote}][1]\r\nORDER BY time, metric",
                     "refId": "A"
                 }
             ],
-            "title": "Detect Problem in a Checkout",
+            "title": "Detect Problem in Checkout of Store $unique_store",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "id": 5,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+                {
+                    "editorType": "sql",
+                    "format": 1,
+                    "meta": {
+                        "builderOptions": {
+                            "columns": [],
+                            "database": "",
+                            "limit": 1000,
+                            "mode": "list",
+                            "queryType": "table",
+                            "table": ""
+                        }
+                    },
+                    "pluginVersion": "4.14.0",
+                    "queryType": "table",
+                    "rawSql": "SELECT sold_articles, window_start, category, model, store\r\nFROM retail_stats.article_analytics\r\nWHERE $__timeFilter(window_start) AND category in ($category) and model in ($model) and store in ($multi_store)",
+                    "refId": "A"
+                }
+            ],
+            "title": "Sales for each Article in selected stores",
+            "transformations": [
+                {
+                    "id": "partitionByValues",
+                    "options": {
+                        "fields": [
+                            "model"
+                        ],
+                        "keepFields": false,
+                        "naming": {
+                            "asLabels": false
+                        }
+                    }
+                }
+            ],
             "type": "timeseries"
         },
         {
@@ -280,7 +504,126 @@
                 "h": 8,
                 "w": 12,
                 "x": 12,
-                "y": 0
+                "y": 8
+            },
+            "id": 2,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+                {
+                    "editorType": "sql",
+                    "format": 1,
+                    "meta": {
+                        "builderOptions": {
+                            "columns": [],
+                            "database": "",
+                            "limit": 1000,
+                            "mode": "list",
+                            "queryType": "table",
+                            "table": ""
+                        }
+                    },
+                    "pluginVersion": "4.14.0",
+                    "queryType": "table",
+                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    sum(ck_net_profit) AS profit,\r\n    store AS metric\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) and store IN ($multi_store)\r\nGROUP BY window_start, store\r\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Profit Comparison between Stores",
+            "transformations": [
+                {
+                    "id": "partitionByValues",
+                    "options": {
+                        "fields": [
+                            "metric"
+                        ],
+                        "keepFields": false,
+                        "naming": {
+                            "asLabels": false
+                        }
+                    }
+                }
+            ],
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "afh42mw9q12bkf"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 16
             },
             "id": 3,
             "options": {
@@ -313,7 +656,7 @@
                     },
                     "pluginVersion": "4.14.0",
                     "queryType": "table",
-                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    checkout AS metric,\r\n    ck_total_sales AS checkout_sales\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store IN '$unique_store' AND checkout IN $checkout\r\nORDER BY time, metric",
+                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    checkout AS metric,\r\n    ck_total_sales AS checkout_sales\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store IN '$unique_store' AND checkout IN ($checkout)\r\nORDER BY time, metric",
                     "refId": "A"
                 }
             ],
@@ -465,7 +808,7 @@
                 "h": 8,
                 "w": 24,
                 "x": 0,
-                "y": 8
+                "y": 24
             },
             "id": 1,
             "options": {
@@ -512,130 +855,11 @@
                     },
                     "pluginVersion": "4.14.0",
                     "queryType": "table",
-                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    ck_net_profit AS net_profit, \r\n    -ck_costs AS cost,\r\n    ck_theoretic_profit AS theoretic_profits,\r\n    avg(ck_net_profit) OVER () AS average_profit,\r\n    store\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store= '$unique_store'               \r\nORDER BY time",
+                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    ck_net_profit AS net_profit, \r\n    -ck_costs AS cost,\r\n    avg(ck_net_profit) OVER () AS average_profit,\r\n    store\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) AND store= '$unique_store'               \r\nORDER BY time",
                     "refId": "A"
                 }
             ],
             "title": "Profits and Costs over time for Store : $unique_store ",
-            "type": "timeseries"
-        },
-        {
-            "datasource": {
-                "type": "grafana-clickhouse-datasource",
-                "uid": "afh42mw9q12bkf"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.6,
-                        "drawStyle": "line",
-                        "fillOpacity": 0,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                            "type": "linear"
-                        },
-                        "showPoints": "auto",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                            "group": "A",
-                            "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                            "mode": "off"
-                        }
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": 0
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
-                            }
-                        ]
-                    }
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 0,
-                "y": 16
-            },
-            "id": 2,
-            "options": {
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": true
-                },
-                "tooltip": {
-                    "hideZeros": false,
-                    "mode": "single",
-                    "sort": "none"
-                }
-            },
-            "pluginVersion": "12.4.2",
-            "targets": [
-                {
-                    "editorType": "sql",
-                    "format": 1,
-                    "meta": {
-                        "builderOptions": {
-                            "columns": [],
-                            "database": "",
-                            "limit": 1000,
-                            "mode": "list",
-                            "queryType": "table",
-                            "table": ""
-                        }
-                    },
-                    "pluginVersion": "4.14.0",
-                    "queryType": "table",
-                    "rawSql": "SELECT \r\n    window_start AS time, \r\n    sum(ck_net_profit) AS profit,\r\n    store AS metric\r\nFROM retail_stats.checkout_analytics\r\nWHERE $__timeFilter(window_start) and store IN ($multi_store)\r\nGROUP BY window_start, store\r\nORDER BY time",
-                    "refId": "A"
-                }
-            ],
-            "title": "Profit Comparison between Stores",
-            "transformations": [
-                {
-                    "id": "partitionByValues",
-                    "options": {
-                        "fields": [
-                            "metric"
-                        ],
-                        "keepFields": false,
-                        "naming": {
-                            "asLabels": false
-                        }
-                    }
-                }
-            ],
             "type": "timeseries"
         }
     ],
@@ -646,9 +870,13 @@
         "list": [
             {
                 "current": {
-                    "text": "All",
+                    "text": [
+                        "Milan1",
+                        "Rome1"
+                    ],
                     "value": [
-                        "$__all"
+                        "Milan1",
+                        "Rome1"
                     ]
                 },
                 "datasource": {
@@ -669,8 +897,8 @@
             },
             {
                 "current": {
-                    "text": "Venice1",
-                    "value": "Venice1"
+                    "text": "Rome1",
+                    "value": "Rome1"
                 },
                 "datasource": {
                     "type": "grafana-clickhouse-datasource",
@@ -689,9 +917,11 @@
             },
             {
                 "current": {
-                    "text": "All",
+                    "text": [
+                        "1"
+                    ],
                     "value": [
-                        "$__all"
+                        "1"
                     ]
                 },
                 "datasource": {
@@ -710,17 +940,75 @@
                 "regex": "",
                 "regexApplyTo": "value",
                 "type": "query"
+            },
+            {
+                "allowCustomValue": false,
+                "current": {
+                    "text": [
+                        "Jacket",
+                        "Jeans"
+                    ],
+                    "value": [
+                        "Jacket",
+                        "Jeans"
+                    ]
+                },
+                "datasource": {
+                    "type": "grafana-clickhouse-datasource",
+                    "uid": "afh42mw9q12bkf"
+                },
+                "definition": "SELECT DISTINCT category \nFROM retail_stats.article_analytics \nORDER BY category",
+                "includeAll": true,
+                "label": "category",
+                "multi": true,
+                "name": "category",
+                "options": [],
+                "query": "SELECT DISTINCT category \nFROM retail_stats.article_analytics \nORDER BY category",
+                "refresh": 1,
+                "regex": "",
+                "regexApplyTo": "value",
+                "type": "query"
+            },
+            {
+                "allowCustomValue": false,
+                "current": {
+                    "text": [
+                        "Bomber",
+                        "Denim",
+                        "Puffer"
+                    ],
+                    "value": [
+                        "Bomber",
+                        "Denim",
+                        "Puffer"
+                    ]
+                },
+                "datasource": {
+                    "type": "grafana-clickhouse-datasource",
+                    "uid": "PDEE91DDB90597936"
+                },
+                "definition": "SELECT DISTINCT model\nFROM retail_stats.article_analytics\nWHERE category IN ($category)\nORDER BY model",
+                "includeAll": true,
+                "label": "model",
+                "multi": true,
+                "name": "model",
+                "options": [],
+                "query": "SELECT DISTINCT model\nFROM retail_stats.article_analytics\nWHERE category IN ($category)\nORDER BY model",
+                "refresh": 1,
+                "regex": "",
+                "regexApplyTo": "value",
+                "type": "query"
             }
         ]
     },
     "time": {
-        "from": "2026-03-25T10:59:41.065Z",
-        "to": "2026-03-25T11:18:29.161Z"
+        "from": "2026-04-03T10:52:38.093Z",
+        "to": "2026-04-03T12:13:36.947Z"
     },
     "timepicker": {},
     "timezone": "browser",
     "title": "Live Retail Data",
     "uid": "adzt8fj",
-    "version": 26,
+    "version": 34,
     "weekStart": ""
 }

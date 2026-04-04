@@ -301,7 +301,7 @@ query_silver = engineered_data.writeStream \
 
 ### STATEFUL AGGREGATIONS
 
-# check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data)
+# check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data), used to detect problem of a checkout of internet connection in a store
 payment_stats = receipt_data \
     .groupBy(
         window(col("timestamp"), "1 minutes"),
