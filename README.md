@@ -3,13 +3,13 @@ This project aims to build an end-to-end pipeline designed to process retail sto
 It implements a **Medallion Architecture** (Bronze, Silver and Gold level) handling both real-time streaming data for responsive live visualizations and batch processing for daily aggregations.
 
 ## 🏗️ Architecture & Tech Stack
-- Data Generation: python script `generator.py` simulating real-time checkout receipts;
-- Message Broker: *Apache Kafka*, used for streaming data ingestion;
-- Process Engine: *Apache Spark*, used for both Structured Streaming and Batch processing;
-- Orchestration: *Apache Airflow*, used to execute the Batch processing;
-- Data Lake: *MinIO*, used for DataLake tables and DLQ to simulate AWS S3;
-- Data Warehouse: *ClickHouse*, OLP database used to retrieve data in a faster way for visualization;
-- Visualization: *Grafana*, used for real-time and static monitoring and analytics dashboards.
+- **Data Generation**: python script `generator.py` simulating real-time checkout receipts;
+- **Message Broker**: *Apache Kafka*, used for streaming data ingestion;
+- **Process Engine**: *Apache Spark*, used for both Structured Streaming and Batch processing;
+- **Orchestration**: *Apache Airflow*, used to execute the Batch processing;
+- **Data Lake**: *MinIO*, used for DataLake tables and DLQ to simulate AWS S3;
+- **Data Warehouse**: *ClickHouse*, OLP database used to retrieve data in a faster way for visualization;
+- **Visualization**: *Grafana*, used for real-time and static monitoring and analytics dashboards.
 
 ## 📂 Project Structure
 ```
@@ -54,3 +54,16 @@ The project includes a pre-configured Grafana dashboard (`retail_dashboard.json`
 - Real-time monitoring of active checkouts / stores;
 - Real-time monitoring of articles sale;
 - Breakdowns of payment methods;
+
+## 🛠️ Setup & Usage
+1. **Clone the Repository**: `git clone https://github.com/Pizz0x/Retail-Data-Pipeline.git`
+2. **Set Environment Variables**: set the environment variables using `.env.example` by modifying the missing field with the desired values
+3. **Start the Infrastructure**: build the custom Airflow image and start Kafka, MinIO, ClickHouse, Airflow and Grafana, `docker compose up --build -d`
+4. **Initialize the Data Lake (MinIO)**: access the MinIO Console at `http://localhost:9001` (Check `.env` for credentials), navigate to "Buckets" and manually create a new bucket named `retail.data`.
+5. **Initialize the Data Warehouse (ClickHouse)**: execute the SQL schemas to create the necessary tables in ClickHouse, `cat sql/clickhouse_tables.sql | docker exec -i clickhouse-gold clickhouse-client`
+6. **Run the Pipeline**:
+    - Start the data generator: `python3 scripts/generator.py --store Store_Name --checkout --Checkout_Number`
+    - Start the streaming processor: `python3 scripts/streaming_processor.py`
+    - Access the Airflow interface in `localhost:8080`, according to the declared value, to enable and monitor `batch_dag`
+    - Access the Grafana interface in `localhost:3001` to view the real-time dashboard. The dashboard and ClickHouse connections are automatically provisioned and ready to use!
+

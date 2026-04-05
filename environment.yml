@@ -1,12 +1,19 @@
-# run "conda env create -f environment.yml" to create a conda environment with the correct libraries
 name: bigdata
 channels:
+  - services
+  - conda-forge
+  - defaults
   - https://repo.anaconda.com/pkgs/main
   - https://repo.anaconda.com/pkgs/r
 dependencies:
-  - python=3.10
-  - openjdk==17.0.18
-  - pyspark
+  - numpy=1.26.4
+  - openjdk=17.0.18
+  - pandas=2.3.3
+  - py4j=0.10.9.7
+  - pyarrow=23.0.1
+  - pyspark=3.5.0
+  - python=3.10.12
+  - python-confluent-kafka=2.13.2
+  - python-dotenv=1.0.1
   - ipykernel
-  - faker
-  - python-confluent-kafka
+ 

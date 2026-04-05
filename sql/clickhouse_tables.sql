@@ -1,4 +1,4 @@
-CREATE DATABASE IF NOT EXISTS retail_stats
+CREATE DATABASE IF NOT EXISTS retail_stats;
 
 
 CREATE TABLE retail_stats.checkout_analytics
@@ -21,7 +21,7 @@ CREATE TABLE retail_stats.checkout_analytics
     ck_net_margin Float64
 )
 ENGINE = MergeTree()
-ORDER BY (window_start, store, checkout)
+ORDER BY (window_start, store, checkout);
 
 
 
@@ -32,10 +32,10 @@ CREATE TABLE retail_stats.payment_analytics
     payment String,
     window_start DateTime,
     window_end DateTime,
-    receipt_number Int32,
+    receipt_number Int32
 )
 ENGINE = MergeTree()
-ORDER BY (window_start, store, checkout, payment)
+ORDER BY (window_start, store, checkout, payment);
 
 
 
@@ -54,7 +54,7 @@ CREATE TABLE retail_stats.article_analytics
     return_rate Float64,
 )
 ENGINE = MergeTree()
-ORDER BY (window_start, category, model, sex, store)
+ORDER BY (window_start, category, model, sex, store);
 
 CREATE TABLE retail_stats.daily_data
 (
@@ -76,9 +76,5 @@ CREATE TABLE retail_stats.daily_data
     date Date
 )
 ENGINE = MergeTree()
-ORDER BY (date, category, model, sex, store)
+ORDER BY (date, category, model, sex, store);
 
-delete from retail_stats.article_analytics where 1=1;
-delete from retail_stats.checkout_analytics where 1=1;
-delete from retail_stats.payment_analytics where 1=1;
-delete from retail_stats.daily_data where 1=1;
