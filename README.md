@@ -1,6 +1,6 @@
 # Retail Data Pipeline: Real Time & Batch Processing
-This project aims to build an end-to-end pipeline designed to process retail store transactions.
-It implements a **Medallion Architecture** (Bronze, Silver and Gold level) handling both real-time streaming data for responsive live visualizations and batch processing for daily aggregations.
+This project aims to build an end-to-end pipeline designed to process real-time retail store transactions.
+It implements a **Medallion Architecture** (Bronze, Silver and Gold level) handling both real-time streaming data for responsive live visualizations and batch processing for daily aggregations required to calculates vital business metrics, allowing stakeholders to monitor store health.
 
 ## 🏗️ Architecture & Tech Stack
 - **Data Generation**: python script `generator.py` simulating real-time checkout receipts;
@@ -44,7 +44,8 @@ Scheduled and orchestrated by Airflow, the batch pipeline run on a daily schedul
 
 ## 💡 Architectural Decisions
 To ensure the pipeline is robust, scalable, and highly performant, several specific design choices were made:
-- **ClickHouse over Traditional RDBMS**: ClickHouse was selected as the Data Warehouse for the Gold layer. As a columnar database, it provides vastly superior performance for heavy aggregation queries over large data volumes compared to traditional relational databases like PostgreSQL or MySQL.
+- **Fault-Tolerance & Exactly-Once Processing**: Engineered a robust Lambda Architecture ensuring zero data loss. Implemented Spark Structured Streaming checkpoints backed by MinIO (S3) and strictly managed Kafka offsets to guarantee exactly-once processing semantics, even in the event of container or worker crashes.
+- **ClickHouse over Traditional RDBMS**: Initially considered standard RDBMS like PostgreSQL for the serving layer. However, given the high throughput of streaming data and the requirement for heavy, on-the-fly analytical aggregations, I opted for ClickHouse. As a columnar OLAP database, ClickHouse drastically reduced query latency, making it the perfect fit for the Gold-level serving layer powering Grafana.
 - **S3-backed Checkpointing (MinIO)**: To guarantee exactly-once semantics and complete system resilience in case of container crashes, Spark Structured Streaming checkpoints are safely stored in MinIO (S3).
 - **Dead Letter Queue (DLQ)**: To prevent pipeline bottlenecks or crashes caused by malformed messages, corrupted records are dynamically filtered and routed to a DLQ. These records are saved in JSON format on S3 (MinIO) for future debugging and data quality analysis.
 - **Native ClickHouse Spark Connector**: Instead of relying on a standard, slower JDBC connection, the pipeline utilizes the native clickhouse-spark-runtime. This drastically optimizes write throughput and reduces latency when pushing streaming aggregations to the Gold layer.

@@ -133,8 +133,11 @@ try:
         receipt = generate_receipt()
         json_rec = json.dumps(receipt)
 
+        message_key = f"{store_loc}_{checkout_n}"
+
         producer.produce(
             topic = topic, # to which kafka pipeline send the data
+            key = message_key.encode('utf-8'),
             value = json_rec.encode('utf-8'), # encode data that has to be sent
             callback = delivery_check # tell us what happened when data are delivered (since kafka is asyncronous)
         )

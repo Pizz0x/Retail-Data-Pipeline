@@ -104,12 +104,32 @@ services:
       - POSTGRES_PASSWORD=${PG_PASSWORD}
       - POSTGRES_DB=${PG_DB}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - airflow_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
+  
+  postgres-inventory:
+    image: postgres:latest
+    container_name: postgres-inventory
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - inventory_data:/var/lib/postgresql/data
+      - ./sql/init_inventory.sql:/docker-entrypoint-initdb.d/init_inventory.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+
 
 
   # Airflow Init is used to create the database and admin user (executed only the first time, then we exploit volumes)
@@ -158,4 +178,5 @@ volumes:
   clickhouse_data:
   minio_data:
   grafana_data:
-  postgres_data:
+  airflow_data:
+  inventory_data:
