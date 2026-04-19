@@ -112,7 +112,7 @@ services:
       start_period: 5s
   
   postgres-inventory:
-    image: postgres:latest
+    image: postgres:13
     container_name: postgres-inventory
     environment:
       - POSTGRES_USER=${DB_USER}
@@ -121,7 +121,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - inventory_data:/var/lib/postgresql/data
+      - inventory_data_v2:/var/lib/postgresql/data
       - ./sql/init_inventory.sql:/docker-entrypoint-initdb.d/init_inventory.sql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
@@ -179,4 +179,4 @@ volumes:
   minio_data:
   grafana_data:
   airflow_data:
-  inventory_data:
+  inventory_data_v2:
