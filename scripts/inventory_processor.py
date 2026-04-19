@@ -1,11 +1,12 @@
 import json, os
-from confluent_kafka import Consumer
+from confluent_kafka import Consumer, Producer
 import psycopg2
 from dotenv import load_dotenv, find_dotenv
 
 
 kafka_server = "localhost:9092"
-topic = "receipts_flow"
+topic_receipts = "receipts_flow"
+topic_orders = "orders_flow"
 
 # search for the .env file and load the variables in the script
 load_dotenv(find_dotenv())
@@ -22,7 +23,11 @@ consumer = Consumer({
     'group.id': "inventory_processor",
     "auto.offset.reset": "earliest"
 })
-consumer.subscribe([topic])
+consumer.subscribe([topic_receipts])
+
+producer = Producer({
+    "bootstrap.servers": kafka_server
+})
 
 
 def main():
@@ -76,6 +81,16 @@ def main():
 
                     if new_quantity < 10:
                         print(f"ALERT: Low inventory for {store} , {category} - {model}: only {new_quantity} left in stock!")
+                        order = {
+                            "store": store,
+                            "category": category,
+                            "model": model,
+                            "quantity": 50
+                        }
+                        producer.produce(topic_orders, json.dumps(order).encode('utf-8'))
+                        print(f"Order sent to {topic_orders} for {store} , {category} - {model}")
+                        producer.poll(0)
+                    
 
                 except Exception as e:
                     print(f"Error in the database update: {e}")
@@ -89,6 +104,7 @@ def main():
         consumer.close()
         cursor.close()
         conn.close()
+        producer.flush()
         print("Consumer closed and database connection closed.")
 
 if __name__ == "__main__":
