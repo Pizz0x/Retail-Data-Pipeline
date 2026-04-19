@@ -69,7 +69,14 @@ def main():
                 try:
                     cursor.execute(update, (quantity, store, category, model))
                     result = cursor.fetchone()
-                    
+
+                    if result:
+                        new_quantity = result[0]
+                        print(f"Updated inventory for {store} , sold {quantity}  {category} - {model}: new quantity = {new_quantity}")
+
+                    if new_quantity < 10:
+                        print(f"ALERT: Low inventory for {store} , {category} - {model}: only {new_quantity} left in stock!")
+
                 except Exception as e:
                     print(f"Error in the database update: {e}")
                     conn.rollback()
