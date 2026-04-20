@@ -201,11 +201,13 @@ services:
     build: ./scripts/streaming
     env_file: .env
     container_name: spark-streaming
-    command: spark-submit streaming_processor.py
+    command: /opt/spark/bin/spark-submit /app/streaming_processor.py
     depends_on:
       - broker
       - clickhouse
       - minio
+    volumes:
+      - ./data:/app/data:ro
 
 volumes:
   kafka_data:

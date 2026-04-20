@@ -25,10 +25,6 @@ spark = SparkSession.builder \
     .config("spark.executor.memory", "4g") \
     .config("spark.memory.offHeap.enabled", "true") \
     .config("spark.memory.offHeap.size", "512m") \
-    .config("spark.jars.packages", f"org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
-                                   f"org.apache.hadoop:hadoop-aws:3.3.4,"
-                                   f"com.amazonaws:aws-java-sdk-bundle:1.12.262,"
-                                   f"com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
     .config("spark.hadoop.fs.s3a.access.key", s3_user) \
     .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
     .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
@@ -99,7 +95,7 @@ df_items = spark.read \
 kafka_data = spark \
     .readStream \
     .format("kafka") \
-    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("kafka.bootstrap.servers", "broker:9092") \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
     .option("failOnDataLoss", "false") \
@@ -116,7 +112,7 @@ query_bronze = bronze_data.writeStream \
     .outputMode("append") \
     .format("parquet") \
     .option("path", "s3a://retail.datalake/bronze/receipts/") \
-    .option("checkpointLocation", "./tmp/checkpoints/bronze/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/bronze/") \
     .start()
 # the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
 
@@ -294,7 +290,7 @@ query_silver = engineered_data.writeStream \
     .format("parquet") \
     .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
-    .option("checkpointLocation", "./tmp/checkpoints/silver/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/silver/") \
     .start()
 
 
@@ -420,7 +416,7 @@ store_checkout_stats = store_checkout_stats.select(
 def ch_payment(df_batch, epoch_id):
     df_batch.write \
         .format("clickhouse") \
-        .option("host", "localhost") \
+        .option("host", "clickhouse-gold") \
         .option("port", "8123") \
         .option("user", ch_user) \
         .option("password", ch_pass) \
@@ -433,13 +429,13 @@ def ch_payment(df_batch, epoch_id):
 payment_query = payment_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_payment) \
-    .option("checkpointLocation", "./tmp/checkpoints/gold/payments") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/payments") \
     .start()
 
 def ch_article(df_batch, epoch_id):
     df_batch.write \
         .format("clickhouse") \
-        .option("host", "localhost") \
+        .option("host", "clickhouse-gold") \
         .option("port", "8123") \
         .option("user", ch_user) \
         .option("password", ch_pass) \
@@ -452,13 +448,13 @@ def ch_article(df_batch, epoch_id):
 article_store_query = article_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_article) \
-    .option("checkpointLocation", "./tmp/checkpoints/gold/articles/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/articles/") \
     .start()
 
 def ch_checkout(df_batch, epoch_id):
     df_batch.write \
         .format("clickhouse") \
-        .option("host", "localhost") \
+        .option("host", "clickhouse-gold") \
         .option("port", "8123") \
         .option("user", ch_user) \
         .option("password", ch_pass) \
@@ -471,7 +467,7 @@ def ch_checkout(df_batch, epoch_id):
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_checkout) \
-    .option("checkpointLocation", "./tmp/checkpoints/gold/checkouts/") \
+    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkouts/") \
     .start()
 
 spark.streams.awaitAnyTermination()
