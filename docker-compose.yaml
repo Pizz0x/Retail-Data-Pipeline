@@ -193,8 +193,19 @@ services:
   inventory-manager:
     build: ./scripts/inventory
     env_file: .env
+    container_name: inventory-manager
     depends_on:
       - postgres-inventory
+
+  spark-streaming:
+    build: ./scripts/streaming
+    env_file: .env
+    container_name: spark-streaming
+    command: spark-submit streaming_processor.py
+    depends_on:
+      - broker
+      - clickhouse
+      - minio
 
 volumes:
   kafka_data:

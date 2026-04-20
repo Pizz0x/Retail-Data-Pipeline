@@ -31,7 +31,7 @@ spark = SparkSession.builder \
                                    f"com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
     .config("spark.hadoop.fs.s3a.access.key", s3_user) \
     .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000") \
+    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
