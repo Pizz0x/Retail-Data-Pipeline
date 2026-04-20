@@ -36,7 +36,7 @@ current_receipt = get_last_receipt()
 
 ### KAFKA CONFIGURATION
 
-conf = {'bootstrap.servers': 'localhost:9092', # we just need get the address of the bootstrap server among the cluster of the Kafka servers
+conf = {'bootstrap.servers': 'localhost:9094', # we just need get the address of the bootstrap server among the cluster of the Kafka servers
         'client.id': f'{store_loc}_{checkout_n}'
         }
 producer = Producer(conf)

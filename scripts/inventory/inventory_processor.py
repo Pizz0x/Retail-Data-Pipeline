@@ -1,10 +1,9 @@
-import json, os
+import json, os, time
 from confluent_kafka import Consumer, Producer
 import psycopg2
 from dotenv import load_dotenv, find_dotenv
 
 
-kafka_server = "localhost:9092"
 topic_receipts = "receipts_flow"
 topic_orders = "orders_flow"
 
@@ -16,6 +15,8 @@ DB_NAME = os.environ.get("DB_NAME", "inventory_db")
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASSWORD", "password")
 DB_PORT = os.environ.get("DB_PORT", "5432")
+kafka_server = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9094")
+print(f"Database connection parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
 
 # Consumer Connection
 consumer = Consumer({
@@ -32,6 +33,7 @@ producer = Producer({
 
 def main():
     try:
+        time.sleep(10)
         conn = psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
