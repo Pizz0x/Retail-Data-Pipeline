@@ -203,17 +203,17 @@ item_data = tagget_data.filter(col("error").isNull()).drop("error")
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
 # since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
 enriched_data = item_data.join(
-        broadcast(df_stores),
+        df_stores,
         on="store",
         how="left"  # this way if the store is not in the static table, we don't lose the receipt
     ). \
     join(
-        broadcast(df_items),
+        df_items,
         on=["category","model"],
         how="left"
     ). \
     join(
-        broadcast(df_checkouts),
+        df_checkouts,
         on=["store", "checkout"],
         how="left"
     )
