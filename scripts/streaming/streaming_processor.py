@@ -21,10 +21,11 @@ spark_version = pyspark.__version__
 
 spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
-    .config("spark.driver.memory", "4g") \
-    .config("spark.executor.memory", "4g") \
+    .config("spark.driver.memory", "1g") \
+    .config("spark.executor.memory", "1g") \
     .config("spark.sql.shuffle.partitions", "4") \
     .config("spark.memory.offHeap.enabled", "true") \
+    .config("spark.sql.autoBroadcastJoinThreshold", -1) \
     .config("spark.memory.offHeap.size", "512m") \
     .config("spark.hadoop.fs.s3a.access.key", s3_user) \
     .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
@@ -79,17 +80,17 @@ receipt_schema = StructType([
 df_stores = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/stores.csv")
+    .csv("./data/stores.csv").cache()
 
 df_checkouts = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/checkouts.csv")
+    .csv("./data/checkouts.csv").cache()
 
 df_items = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/items.csv")
+    .csv("./data/items.csv").cache()
 
 
 ### READ FROM KAFKA PIPELINE
@@ -114,6 +115,7 @@ query_bronze = bronze_data.writeStream \
     .format("parquet") \
     .option("path", "s3a://retail.datalake/bronze/receipts/") \
     .option("checkpointLocation", "file:///app/checkpoints/bronze/") \
+    .trigger(processingTime="15 seconds") \
     .start()
 # the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
 
@@ -204,17 +206,17 @@ item_data = tagget_data.filter(col("error").isNull()).drop("error")
 # we want to add information to the rows by exploiting already known things about data that are not automatically added by the checkout. Indeed adding all data directly from the checkout is less realistic and it means more data to send through the pipeline (less efficient)
 # since we have small static tables with the additional informations, in the case of streaming of data, the more convenient thing to do is doing broadcast (we pass the small tables to each executor, way more efficient)
 enriched_data = item_data.join(
-        df_stores,
+        broadcast(df_stores),
         on="store",
         how="left"  # this way if the store is not in the static table, we don't lose the receipt
     ). \
     join(
-        df_items,
+        broadcast(df_items),
         on=["category","model"],
         how="left"
     ). \
     join(
-        df_checkouts,
+        broadcast(df_checkouts),
         on=["store", "checkout"],
         how="left"
     )
@@ -292,6 +294,7 @@ query_silver = engineered_data.writeStream \
     .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
     .option("checkpointLocation", "file:///app/checkpoints/silver/") \
+    .trigger(processingTime="15 seconds") \
     .start()
 
 
@@ -431,6 +434,7 @@ payment_query = payment_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_payment) \
     .option("checkpointLocation", "file:///app/checkpoints/gold/payments") \
+    .trigger(processingTime="15 seconds") \
     .start()
 
 def ch_article(df_batch, epoch_id):
@@ -450,6 +454,7 @@ article_store_query = article_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_article) \
     .option("checkpointLocation", "file:///app/checkpoints/gold/articles/") \
+    .trigger(processingTime="15 seconds") \
     .start()
 
 def ch_checkout(df_batch, epoch_id):
@@ -469,6 +474,7 @@ store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_checkout) \
     .option("checkpointLocation", "file:///app/checkpoints/gold/checkouts/") \
+    .trigger(processingTime="15 seconds") \
     .start()
 
 spark.streams.awaitAnyTermination()
