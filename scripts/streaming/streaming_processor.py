@@ -23,6 +23,7 @@ spark = SparkSession.builder \
     .appName("RetailDataPipeline") \
     .config("spark.driver.memory", "4g") \
     .config("spark.executor.memory", "4g") \
+    .config("spark.sql.shuffle.partitions", "4") \
     .config("spark.memory.offHeap.enabled", "true") \
     .config("spark.memory.offHeap.size", "512m") \
     .config("spark.hadoop.fs.s3a.access.key", s3_user) \
@@ -112,7 +113,7 @@ query_bronze = bronze_data.writeStream \
     .outputMode("append") \
     .format("parquet") \
     .option("path", "s3a://retail.datalake/bronze/receipts/") \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/bronze/") \
+    .option("checkpointLocation", "file:///app/checkpoints/bronze/") \
     .start()
 # the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
 
@@ -290,7 +291,7 @@ query_silver = engineered_data.writeStream \
     .format("parquet") \
     .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/silver/") \
+    .option("checkpointLocation", "file:///app/checkpoints/silver/") \
     .start()
 
 
@@ -429,7 +430,7 @@ def ch_payment(df_batch, epoch_id):
 payment_query = payment_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_payment) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/payments") \
+    .option("checkpointLocation", "file:///app/checkpoints/gold/payments") \
     .start()
 
 def ch_article(df_batch, epoch_id):
@@ -448,7 +449,7 @@ def ch_article(df_batch, epoch_id):
 article_store_query = article_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_article) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/articles/") \
+    .option("checkpointLocation", "file:///app/checkpoints/gold/articles/") \
     .start()
 
 def ch_checkout(df_batch, epoch_id):
@@ -467,7 +468,7 @@ def ch_checkout(df_batch, epoch_id):
 store_checkout_query = store_checkout_stats.writeStream \
     .outputMode("append") \
     .foreachBatch(ch_checkout) \
-    .option("checkpointLocation", "s3a://retail.datalake/checkpoints/gold/checkouts/") \
+    .option("checkpointLocation", "file:///app/checkpoints/gold/checkouts/") \
     .start()
 
 spark.streams.awaitAnyTermination()

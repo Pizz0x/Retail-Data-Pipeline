@@ -208,6 +208,7 @@ services:
       - minio
     volumes:
       - ./data:/app/data:ro
+      - ./checkpoints:/app/checkpoints
 
 volumes:
   kafka_data:
