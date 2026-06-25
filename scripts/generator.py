@@ -1,49 +1,42 @@
-import random, json, time, os
-import argparse # used to configure arguments passed when executing the script
-from confluent_kafka import Producer
+import argparse
+import json
+import os
+import random
+import time
 from datetime import datetime
+from pathlib import Path
+# type specifications
+from typing import Any, Dict, List, TypedDict
+# libraries for Kafka
+from confluent_kafka import KafkaError, Message, Producer
 
 
-### CONFIGURATION OF THE ARGUMENTS
-parser = argparse.ArgumentParser(description="Checkout Simulator")
-
-# in the execution of the script we can specify the store, in this way we can run the script simultaneously multiple times, one for each store
-parser.add_argument('--store', type=str, required=True, help='Store location (ex. Milan)')
-
-# we also want to specify the checkout number, indeed we can have different checkout in a single store where each of them compute receipts independently
-parser.add_argument('--checkout', type=str, required=True, help='Checkout number (ex. 3)')
-
-args = parser.parse_args()
-store_loc = args.store 
-checkout_n = int(args.checkout)
+class ItemDict(TypedDict):
+    category: str
+    model: str
+    price: float
+    sex: str
+    size: str
+    quantity: int
 
 
-### STATE MANAGER FOR THE CHECKOUTS
-state_file = f"./data/{store_loc}_{checkout_n}.txt"
-
-def get_last_receipt():
-    if os.path.exists(state_file):
-        with open(state_file, 'r') as f:
-            return int(f.read().strip())
-    return 0
-
-def save_receipt(n):
-    with open(state_file, 'w') as f:
-        f.write(str(n))
-
-current_receipt = get_last_receipt()
+class ReceiptDict(TypedDict):
+    receipt_id: str
+    store: str
+    checkout: str
+    timestamp: str
+    total_amount: float
+    payment: str
+    test: bool
+    items: List[ItemDict]
 
 
-### KAFKA CONFIGURATION
+CatalogueType = Dict[str, Dict[str, float]]
+SIZE: List[str] = ['XS', 'S', 'M', 'L', 'XL', '2XL']
+SEX: List[str] = ['F', 'M']
+PAYMENTS: List[str] = ['card', 'cash', 'gift card']
 
-conf = {'bootstrap.servers': 'localhost:9094', # we just need get the address of the bootstrap server among the cluster of the Kafka servers
-        'client.id': f'{store_loc}_{checkout_n}'
-        }
-producer = Producer(conf)
-topic = "receipts_flow"
-
-# possible configurations of each article
-catalogue = {
+catalogue: CatalogueType = {
     'Jeans': {
         'Skinny': 49.99, 'Slim': 59.99, 'Straight': 69.99, 'Baggy': 79.99
     },
@@ -63,88 +56,142 @@ catalogue = {
         'Ankle (3-pack)': 9.99, 'Crew': 5.99, 'Sport': 12.99
     }
 }
-size = ['XS', 'S', 'M', 'L', 'XL', '2XL']
-sex = ['F', 'M']
 
-payments = ['card', 'cash', 'gift card']
+TOPIC = 'receipts_flow'
+BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094')
 
-is_test = True
 
-def generate_receipt():
-    global is_test
-    global current_receipt
+def parse_args() -> tuple[str, int]:
+    parser = argparse.ArgumentParser(description='Checkout Simulator')
+    # in the execution of the script we can specify the store, in this way we can run the script simultaneously multiple times, one for each store
+    parser.add_argument('--store', type=str, required=True, help='Store location (ex. Milan)')
+    # we also want to specify the checkout number, indeed we can have different checkout in a single store where each of them compute receipts independently
+    parser.add_argument('--checkout', type=str, required=True, help='Checkout number (ex. 3)')
+
+    args = parser.parse_args()
+    return args.store, int(args.checkout)
+
+
+def state_file_path(store_loc: str, checkout_n: int) -> Path:
+    return Path('data') / f'{store_loc}_{checkout_n}.txt'
+
+
+def get_last_receipt(state_path: Path) -> int:
+    if state_path.exists():
+        with state_path.open('r') as handle:
+            return int(handle.read().strip())
+    return 0
+
+
+def save_receipt(state_path: Path, n: int) -> None:
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    with state_path.open('w') as handle:
+        handle.write(str(n))
+
+
+def create_producer(client_id: str) -> Producer:
+    return Producer({
+        'bootstrap.servers': BOOTSTRAP_SERVERS,
+        'client.id': client_id,
+    })
+
+
+def generate_receipt(store_loc: str, checkout_n: int, current_receipt: int, is_test: bool) -> tuple[ReceiptDict, int]:
     current_receipt += 1
-    save_receipt(current_receipt)
+    save_receipt(state_file_path(store_loc, checkout_n), current_receipt)
 
     store_prefix = store_loc[:3].upper()
-    receipt_id = f"{store_prefix}-{checkout_n:02d}-{current_receipt:06d}"
+    receipt_id = f'{store_prefix}-{checkout_n:02d}-{current_receipt:06d}'
 
-    n_items = int(1 + (random.random()**2 * 19))
-    items = []
-    total_amount = 0.0
+    items: List[ItemDict] = []
+    total_price = 0.0
+    n_items = int(1 + (random.random() ** 2 * 19))
 
     for _ in range(n_items):
         category = random.choice(list(catalogue.keys()))
         model = random.choice(list(catalogue[category].keys()))
         chance = random.random() * 100
-        discount = 0
-        if chance<5:
+        discount = 0.0
+
+        if chance < 5:
             discount = 0.40
-        elif chance<10:
+        elif chance < 10:
             discount = 0.30
-        elif chance<20:
+        elif chance < 20:
             discount = 0.20
-        chance2 = random.random() * 100
-        type=1
-        if chance2>95:
-            type=-1
-        price = round(type*catalogue[category][model] - type*catalogue[category][model]*discount,2)
-        quantity = int(1 + (random.random()**2 * 5))
 
-        items.append({"category": category, "model": model, "price": price, "sex": random.choice(sex), "size": random.choice(size), "quantity": quantity})
-        total_amount += price*quantity
+        if random.random() > 0.95:
+            multiplier = -1
+        else:
+            multiplier = 1
 
-    
-    receipt = {
-        "receipt_id": receipt_id,
-        "store": store_loc,
-        "checkout": checkout_n,
-        "timestamp": datetime.now().isoformat(),
-        "total_amount": round(total_amount, 2),
-        "payment": random.choice(payments),
-        "test": is_test,
-        "items": items
+        price = round((catalogue[category][model] * multiplier) * (1 - discount), 2)
+        quantity = int(1 + (random.random() ** 2 * 5))
+
+        item: ItemDict = {
+            'category': category,
+            'model': model,
+            'price': price,
+            'sex': random.choice(SEX),
+            'size': random.choice(SIZE),
+            'quantity': quantity,
+        }
+        items.append(item)
+        total_price += price * quantity
+
+    receipt: ReceiptDict = {
+        'receipt_id': receipt_id,
+        'store': store_loc,
+        'checkout': str(checkout_n),
+        'timestamp': datetime.now().isoformat(),
+        'total_amount': round(total_price, 2),
+        'payment': random.choice(PAYMENTS),
+        'test': is_test,
+        'items': items,
     }
-    is_test = False
-    return receipt
+
+    return receipt, current_receipt
 
 
-
-def delivery_check(err, msg):
+def delivery_check(err: KafkaError | None, msg: Message) -> None:
     if err is not None:
-        print(f"Error in the receipt delivery: {err}")
+        print(f'Error in the receipt delivery: {err}')
     else:
-        print(f"Receipt correclty deliver to Kafka : {msg.value().decode('utf-8')}")
+        raw = msg.value() if msg is not None else None
+        value = raw.decode('utf-8') if raw is not None else '<no message>'
+        print(f'Receipt correctly delivered to Kafka: {value}')
 
-### GENERATING CYCLE
-print(f"Store: {store_loc} | Checkout: {checkout_n} | Last receipt: {current_receipt}")
-try:
-    while True:
-        receipt = generate_receipt()
-        json_rec = json.dumps(receipt)
 
-        message_key = f"{store_loc}_{checkout_n}"
+def main() -> None:
+    store_loc, checkout_n = parse_args()
+    state_path = state_file_path(store_loc, checkout_n)
+    current_receipt = get_last_receipt(state_path)
+    producer = create_producer(f'{store_loc}_{checkout_n}')
 
-        producer.produce(
-            topic = topic, # to which kafka pipeline send the data
-            key = message_key.encode('utf-8'),
-            value = json_rec.encode('utf-8'), # encode data that has to be sent
-            callback = delivery_check # tell us what happened when data are delivered (since kafka is asyncronous)
-        )
-        producer.poll(0) # check if the buffer still has data that we are sure are delivered correctly and remove them
+    print(f'Store: {store_loc} | Checkout: {checkout_n} | Last receipt: {current_receipt}')
 
-        time.sleep(random.uniform(1.0, 2.0))
-except KeyboardInterrupt:
-    print("The Checkout has closed")
-finally:
-    producer.flush() # ensure that the program doesn't stop until all data in buffer are delivered
+    is_test = True
+
+    try:
+        while True:
+            receipt, current_receipt = generate_receipt(store_loc, checkout_n, current_receipt, is_test)
+            is_test = False
+            json_rec = json.dumps(receipt)
+            message_key = f'{store_loc}_{checkout_n}'
+
+            producer.produce(
+                topic=TOPIC,
+                key=message_key.encode('utf-8'),
+                value=json_rec.encode('utf-8'),
+                callback=delivery_check,
+            )
+            producer.poll(0)
+            time.sleep(random.uniform(1.0, 2.0))
+    except KeyboardInterrupt:
+        print('The Checkout has closed')
+    finally:
+        producer.flush()
+
+
+if __name__ == '__main__':
+    main()

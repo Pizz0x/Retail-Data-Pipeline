@@ -19,11 +19,12 @@ ch_pass = os.environ.get("CH_PASSWORD", "password")
 spark_version = pyspark.__version__
 spark_version = pyspark.__version__
 
-spark = SparkSession.builder \
+spark = SparkSession.Builder() \
     .appName("RetailDataPipeline") \
     .config("spark.driver.memory", "1g") \
     .config("spark.executor.memory", "1g") \
     .config("spark.sql.shuffle.partitions", "4") \
+    .config("spark.scheduler.mode", "FAIR") \
     .config("spark.memory.offHeap.enabled", "true") \
     .config("spark.sql.autoBroadcastJoinThreshold", -1) \
     .config("spark.memory.offHeap.size", "512m") \
@@ -80,17 +81,17 @@ receipt_schema = StructType([
 df_stores = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/stores.csv").cache()
+    .csv("./data/stores.csv")
 
 df_checkouts = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/checkouts.csv").cache()
+    .csv("./data/checkouts.csv")
 
 df_items = spark.read \
     .option("header", "true") \
     .option("InferSchema", "true") \
-    .csv("./data/items.csv").cache()
+    .csv("./data/items.csv")
 
 
 ### READ FROM KAFKA PIPELINE
@@ -101,22 +102,23 @@ kafka_data = spark \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
     .option("failOnDataLoss", "false") \
-    .option("maxOffsetsPerTrigger", 5000) \
+    .option("maxOffsetsPerTrigger", 10000) \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
 
-### BRONZE LEVEL SINK -> Raw Data
+## BRONZE LEVEL SINK -> Raw Data
 bronze_data = kafka_data \
     .selectExpr("CAST(value AS STRING) as raw_json",
                 "timestamp as kafka_arrival_time") # in this case we infer the missing timestamp as the time the data arrived from kafka
 
 query_bronze = bronze_data.writeStream \
-    .outputMode("append") \
     .format("parquet") \
-    .option("path", "s3a://retail.datalake/bronze/receipts/") \
-    .option("checkpointLocation", "file:///app/checkpoints/bronze/") \
-    .trigger(processingTime="15 seconds") \
+    .option("path", "s3a://retail.datalake/bronze/") \
+    .option("checkpointLocation", "file:///app/checkpoints/bronze_test") \
+    .trigger(processingTime="10 seconds") \
     .start()
+
+#query_bronze.awaitTermination()
 # the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
 
 
@@ -147,7 +149,7 @@ receipt_data = receipt_data.withColumn("timestamp",
 # we will use a watermark to ensure the retrieval of receipt after at most 10 minutes, then they could even get lost (which is quite rare)
 # without a watermark, Spark have to remember all the ids which is not feasible
 receipt_data = receipt_data \
-    .withWatermark("timestamp", "1 minutes") \
+    .withWatermark("timestamp", "10 minutes") \
     .dropDuplicates(["receipt_id"])
 
 
@@ -294,7 +296,7 @@ query_silver = engineered_data.writeStream \
     .partitionBy("year", "month", "day") \
     .option("path", "s3a://retail.datalake/silver/receipts/") \
     .option("checkpointLocation", "file:///app/checkpoints/silver/") \
-    .trigger(processingTime="15 seconds") \
+    .trigger(processingTime="10 minutes") \
     .start()
 
 
@@ -478,5 +480,3 @@ store_checkout_query = store_checkout_stats.writeStream \
     .start()
 
 spark.streams.awaitAnyTermination()
-
-# python3 ./scripts/generator.py --store Rome1 --checkout 2

@@ -1,100 +1,116 @@
-import argparse, os
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, lit, sum as _sum
+import argparse
+import os
+from typing import Tuple
 
-def main():
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, lit, when
+from pyspark.sql.functions import sum as _sum
+
+
+def parse_date(execution_date: str) -> Tuple[str, str, str]:
+    year, month, day = execution_date.split('-')
+    return year, str(int(month)), str(int(day))
+
+
+def build_spark_session(execution_date: str) -> SparkSession:
+    s3_user = os.environ.get('S3_USER', 'user')
+    s3_pass = os.environ.get('S3_PASSWORD', 'password')
+
+    return SparkSession.Builder() \
+        .appName(f'Batch_Processor_{execution_date}') \
+        .config('spark.hadoop.fs.s3a.endpoint', 'http://minio:9000') \
+        .config('spark.hadoop.fs.s3a.access.key', s3_user) \
+        .config('spark.hadoop.fs.s3a.secret.key', s3_pass) \
+        .config('spark.hadoop.fs.s3a.connection.ssl.enabled', 'false') \
+        .config('spark.hadoop.fs.s3a.path.style.access', 'true') \
+        .config('spark.hadoop.fs.s3a.impl', 'org.apache.hadoop.fs.s3a.S3AFileSystem') \
+        .config('spark.jars.packages', 'org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5') \
+        .getOrCreate()
+
+
+def read_silver_data(spark: SparkSession, silver_path: str) -> DataFrame:
+    return spark.read.parquet(silver_path)
+
+
+def aggregate_daily_data(silver_data: DataFrame, execution_date: str) -> DataFrame:
+    return silver_data \
+        .groupBy(
+            col('category'),
+            col('model'),
+            col('sex'),
+            col('supplier'),
+            col('store'),
+            col('region'),
+            col('loc_type'),
+            col('square_footage'),
+            col('day_of_week')
+        ) \
+        .agg(
+            _sum(when(col('transaction_type') == 'SALE', col('quantity')).otherwise(0)).alias('sold_articles'),
+            _sum(col('net_profit')).alias('net_profit'),  # profit is already computed on the quantity of articles sold and is negative in case of return
+            _sum(when(col('transaction_type') == 'RETURN', col('quantity')).otherwise(0)).alias('returned_articles'),
+            _sum(when(col('transaction_type') == 'SALE', -col('cost') * col('quantity'))
+                .when(col('transaction_type') == 'RETURN', col('cost') * col('quantity'))
+                .otherwise(0)).alias('costs'),
+            _sum(when(col('transaction_type') == 'SALE', col('list_price') * col('quantity'))
+                .when(col('transaction_type') == 'RETURN', -col('list_price') * col('quantity'))
+                .otherwise(0)).alias('theoretic_profit'),
+        ) \
+        .withColumn(
+            'return_rate',
+            (col('returned_articles') / (col('sold_articles') + col('returned_articles'))) * 100
+        ) \
+        .withColumn(
+            'net_margin',
+            col('net_profit') / col('theoretic_profit') * 100
+        ) \
+        .withColumn(
+            'date',
+            lit(execution_date).cast('date')
+        ) \
+        .drop('theoretic_profit') \
+        .fillna(0, subset=['return_rate', 'net_margin'])
+
+
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', required=True)
     args = parser.parse_args()
 
-    execution_date = args.date
-    print(f"Elaboration of the batch for date: {execution_date}")
+    execution_date: str = args.date
+    print(f'Elaboration of the batch for date: {execution_date}')
 
-    s3_user = os.environ.get("S3_USER", "user")
-    s3_pass = os.environ.get("S3_PASSWORD", "password")
+    year, month, day = parse_date(execution_date)
+    silver_path = f's3a://retail.datalake/silver/receipts/year={year}/month={month}/day={day}/'
+    print(f'The silver data are contained in: {silver_path}')
 
-    y,m,d = execution_date.split('-')
-    m = str(int(m)) 
-    d = str(int(d))
-
-    spark = SparkSession.builder \
-        .appName(f"Batch_Processor_{execution_date}") \
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-        .config("spark.hadoop.fs.s3a.access.key", s3_user) \
-        .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0,com.clickhouse:clickhouse-jdbc:0.9.5") \
-        .getOrCreate()
-
-    spark.sparkContext.setLogLevel("WARN")
-
-    silver_path = f"s3a://retail.datalake/silver/receipts/year={y}/month={m}/day={d}/"
-    print(f"The silver data are contained in: {silver_path}")
+    spark = build_spark_session(execution_date)
+    spark.sparkContext.setLogLevel('WARN')
 
     try:
-        silver_data = spark.read.parquet(silver_path)
-    except Exception as e:
-        print(f"There was an Error / No data found for {silver_path}: {e}")
+        silver_data = read_silver_data(spark, silver_path)
+    except Exception as exc:
+        print(f'There was an Error / No data found for {silver_path}: {exc}')
         spark.stop()
         return
-    
-    daily_data = silver_data \
-        .groupBy(
-            col("category"),
-            col("model"),
-            col("sex"),
-            col("supplier"),
-            col("store"),
-            col("region"),
-            col("loc_type"),
-            col("square_footage"),
-            col("day_of_week")
-        ) \
-        .agg(
-            _sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
-            _sum(col("net_profit")).alias("net_profit"),  # profit is already computed on the quantity of articles sold and is negative in case of return
-            _sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("returned_articles"),
-            _sum(when(col("transaction_type")=="SALE",-col("cost")*col("quantity"))
-                .when(col("transaction_type")=="RETURN", col("cost")*col("quantity"))
-                .otherwise(0)).alias("costs"),
-            _sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
-                .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
-                .otherwise(0)).alias("theoretic_profit"),
-            
-        ) \
-        .withColumn(
-            "return_rate",
-            (col("returned_articles") / (col("sold_articles")+col("returned_articles")))*100
-        ) \
-        .withColumn(
-            "net_margin",
-            col("net_profit") / col("theoretic_profit") * 100
-        ) \
-        .withColumn(
-            "date",
-            lit(execution_date).cast("date")
-        ) \
-        .drop("theoretic_profit") \
-        .fillna(0, subset=["return_rate", "net_margin"])
 
+    daily_data = aggregate_daily_data(silver_data, execution_date)
     daily_data.show()
 
     daily_data.write \
-        .format("clickhouse") \
-        .option("host", "clickhouse-gold") \
-        .option("port", "8123") \
-        .option("user", "default") \
-        .option("password", "clickhouse123") \
-        .option("database", "retail_stats") \
-        .option("table", "daily_data") \
-        .option("batchSize", "5000") \
-        .mode("append") \
+        .format('clickhouse') \
+        .option('host', 'clickhouse-gold') \
+        .option('port', '8123') \
+        .option('user', 'default') \
+        .option('password', 'clickhouse123') \
+        .option('database', 'retail_stats') \
+        .option('table', 'daily_data') \
+        .option('batchSize', '5000') \
+        .mode('append') \
         .save()
-    print("Batch Pipeline completed !!")
+    print('Batch Pipeline completed !!')
     spark.stop()
 
-    
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()
