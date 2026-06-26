@@ -1,50 +1,14 @@
 import pyspark
-from pyspark.sql import SparkSession
 from functools import reduce
-from pyspark.sql.window import Window
 from operator import or_
-from pyspark.sql.functions import from_json, col, explode, broadcast, when, current_timestamp, expr, abs as _abs, sum, count, hour, month, year, day, round, date_format, window
+from pyspark.sql.functions import from_json, col, explode, broadcast, struct, to_json, when, current_timestamp, expr, abs as _abs, hour, month, year, day, round, date_format
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, ArrayType, BooleanType
-import os
-from dotenv import load_dotenv, find_dotenv
-
-# search for the .env file and load the variables in the script
-load_dotenv(find_dotenv())
-s3_user = os.environ.get("S3_USER", "user")
-s3_pass = os.environ.get("S3_PASSWORD", "password")
-ch_user = os.environ.get("CH_USER", "user")
-ch_pass = os.environ.get("CH_PASSWORD", "password")
+from sparksession import create_spark_session
 
 # create the spark session and configure the kafka connector
 spark_version = pyspark.__version__
-spark_version = pyspark.__version__
 
-spark = SparkSession.Builder() \
-    .appName("RetailDataPipeline") \
-    .config("spark.driver.memory", "1g") \
-    .config("spark.executor.memory", "1g") \
-    .config("spark.sql.shuffle.partitions", "4") \
-    .config("spark.scheduler.mode", "FAIR") \
-    .config("spark.memory.offHeap.enabled", "true") \
-    .config("spark.sql.autoBroadcastJoinThreshold", -1) \
-    .config("spark.memory.offHeap.size", "512m") \
-    .config("spark.hadoop.fs.s3a.access.key", s3_user) \
-    .config("spark.hadoop.fs.s3a.secret.key", s3_pass) \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
-    .config("spark.hadoop.fs.s3a.connection.timeout", "60000") \
-    .config("spark.hadoop.fs.s3a.connection.establish.timeout", "15000") \
-    .config("spark.hadoop.fs.s3a.connection.acquisition.timeout", "60000") \
-    .config("spark.hadoop.fs.s3a.connection.idle.time", "60000") \
-    .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000") \
-    .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
-    .config("spark.hadoop.fs.s3a.connection.ttl", "300000") \
-    .config("spark.hadoop.fs.s3a.multipart.purge.age", "86400") \
-    .config("spark.sql.streaming.stopGracefullyOnShutdown", "true") \
-    .getOrCreate()
+spark = create_spark_session(f"Data-Processor")
     
 
 # hidden warnings (they are lame)
@@ -98,29 +62,13 @@ df_items = spark.read \
 kafka_data = spark \
     .readStream \
     .format("kafka") \
-    .option("kafka.bootstrap.servers", "broker:9092") \
+    .option("kafka.bootstrap.servers", "localhost:9094") \
     .option("subscribe", "receipts_flow") \
     .option("startingOffsets", "latest") \
     .option("failOnDataLoss", "false") \
     .option("maxOffsetsPerTrigger", 10000) \
     .load()
 #startingOffsets =  latest  -> required for streaming data, otherwise we use earliest for batch. It tells us to read only new messages, ignoring the previous ones
-
-## BRONZE LEVEL SINK -> Raw Data
-bronze_data = kafka_data \
-    .selectExpr("CAST(value AS STRING) as raw_json",
-                "timestamp as kafka_arrival_time") # in this case we infer the missing timestamp as the time the data arrived from kafka
-
-query_bronze = bronze_data.writeStream \
-    .format("parquet") \
-    .option("path", "s3a://retail.datalake/bronze/") \
-    .option("checkpointLocation", "file:///app/checkpoints/bronze_test") \
-    .trigger(processingTime="10 seconds") \
-    .start()
-
-#query_bronze.awaitTermination()
-# the checkpoint is used to remember always at what point of the computation we were when the system crush -> robustness
-
 
 
 ### PARSING AND TRANSFORMATION OF DATA
@@ -152,6 +100,20 @@ receipt_data = receipt_data \
     .withWatermark("timestamp", "10 minutes") \
     .dropDuplicates(["receipt_id"])
 
+
+receipt_kafka_data = receipt_data.select(
+    col("receipt_id").alias("key"),
+    to_json(struct([col(c) for c in receipt_data.columns])).alias("value")
+)
+
+query_receipt = receipt_kafka_data.writeStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9094") \
+    .option("topic", "receipts_data") \
+    .option("kafka.compression.type", "snappy") \
+    .option("checkpointLocation", "./checkpoints/receipt_kafka") \
+    .trigger(processingTime="5 seconds") \
+    .start()
 
 # at this point we want to transform the list of items contained in the receipts in a list of individual items for the analysis of the sells
 item_data = receipt_data \
@@ -191,7 +153,7 @@ critical_condition = reduce(or_, [col(c).isNull() for c in critical_fields])
 important_fields = ["checkout", "timestamp", "quantity"] # field that we have to handle by putting default values
 informative_fields = ["total_price", "sex", "size", "payment"] # filed that we have to handle by just setting them as N/A
 
-tagget_data = item_data.withColumn(
+tagged_data = item_data.withColumn(
         "error",
         when(col("test"), "TEST_TRANSACTION")
         .when(critical_condition, "MISSING_CRITICAL_FIELD")
@@ -200,8 +162,8 @@ tagget_data = item_data.withColumn(
 
 
 # we then throw problematic instances straight to the log queue and we remove them from the data to be processed
-log_struct = tagget_data.filter(col("error").isNotNull()) 
-item_data = tagget_data.filter(col("error").isNull()).drop("error")
+log_struct = tagged_data.filter(col("error").isNotNull()) 
+item_data = tagged_data.filter(col("error").isNull()).drop("error")
 
 
 ### DATA ENRICHMENT
@@ -288,195 +250,20 @@ engineered_data = engineered_data.withColumn(
         "year", year(col("timestamp"))
     )
 
+silver_data = engineered_data.select(
+    col("receipt_id").alias("key"),
+    to_json(struct([col(c) for c in engineered_data.columns])).alias("value")
+)
+
 ### SILVER LEVEL SINK -> cleaned and processed data 
 # for now we just write on console to check everything works fine
-query_silver = engineered_data.writeStream \
-    .outputMode("append") \
-    .format("parquet") \
-    .partitionBy("year", "month", "day") \
-    .option("path", "s3a://retail.datalake/silver/receipts/") \
-    .option("checkpointLocation", "file:///app/checkpoints/silver/") \
-    .trigger(processingTime="10 minutes") \
-    .start()
-
-
-
-### STATEFUL AGGREGATIONS
-
-# check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data), used to detect problem of a checkout of internet connection in a store
-payment_stats = receipt_data \
-    .groupBy(
-        window(col("timestamp"), "1 minutes"),
-        col("store"),
-        col("checkout"),
-        col("payment")
-    ) \
-    .agg(count("*").alias("receipt_number"))
-
-payment_stats = payment_stats.select(
-    col("store"),
-    col("checkout"),
-    col("payment"),
-    col("window.start").alias("window_start"),
-    col("window.end").alias("window_end"),
-    col("receipt_number")
-)
-
-# check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
-article_stats = engineered_data \
-    .groupBy(
-        window(col("timestamp"), "1 minutes", "30 seconds"),
-        col("category"),
-        col("model"),
-        col("sex"),
-        col("supplier"),
-        col("store")
-    ) \
-    .agg(
-        sum(when(col("transaction_type")=="SALE", col("quantity")).otherwise(0)).alias("sold_articles"),
-        sum(col("net_profit")).alias("net_profit_articles"),  # profit is already computed on the quantity of articles sold and is negative in case of return
-        sum(when(col("transaction_type")=="RETURN", col("quantity")).otherwise(0)).alias("returned_articles"),
-    ) \
-    .withColumn(
-        "return_rate",
-        (col("returned_articles") / (col("sold_articles")+col("returned_articles")))*100
-    )
-
-article_stats = article_stats.select(
-    col("category"),
-    col("model"),
-    col("sex"),
-    col("store"),
-    col("window.start").alias("window_start"),
-    col("window.end").alias("window_end"),
-    col("supplier"),
-    col("sold_articles"),
-    col("net_profit_articles"),
-    col("returned_articles"),
-    col("return_rate")
-)
-
-# check the checkout and so even the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
-# we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
-store_checkout_stats = engineered_data \
-    .groupBy(
-        window(col("timestamp"), "1 minutes", "30 seconds"),
-        col("store"),
-        col("region"),
-        col("loc_type"),
-        col("square_footage"),
-        col("checkout"),
-        col("checkout_type"),
-        col("checkout_department")
-    ) \
-    .agg(
-        sum(col("net_profit")).alias("ck_net_profit"), # profit is already computed on the quantity of articles sold and is negative in case of return
-        sum(when(col("transaction_type")=="SALE",col("price")*col("quantity"))
-            .when(col("transaction_type")=="RETURN", -col("price")*col("quantity"))
-            .otherwise(0)).alias("ck_profit"),
-        sum(when(col("transaction_type")=="SALE",col("list_price")*col("quantity"))
-            .when(col("transaction_type")=="RETURN", -col("list_price")*col("quantity"))
-            .otherwise(0)).alias("ck_theoretic_profit"),
-        sum(when(col("transaction_type")=="SALE",-col("cost")*col("quantity"))
-            .when(col("transaction_type")=="RETURN", col("cost")*col("quantity"))
-            .otherwise(0)).alias("ck_costs"),
-        sum(when(col("transaction_type") == "SALE", col("quantity")).otherwise(0)).alias("ck_total_sales"),
-        sum(when(col("transaction_type") == "RETURN", col("quantity")).otherwise(0)).alias("ck_total_return"),
-        sum(when(col("transaction_type") == "SALE", col("discount")).otherwise(0)).alias("total_discount") # this has then to be divided by the quantity on the interface platform that does the graphics (if we do the average directly here for the checkout then it would not be possible to do so even for the stores)
-    ) \
-    .withColumn(
-        "ck_return_rate",
-        (col("ck_total_return") / (col("ck_total_return")+col("ck_total_sales")))*100
-    ) \
-    .withColumn(
-        "ck_net_margin",
-        (col("ck_net_profit")/ col("ck_theoretic_profit")) * 100
-    ) \
-    .withColumn(
-        "ck_discount",
-        col("total_discount") / col("ck_total_sales")
-    ) \
-    .drop("total_discount", "ck_theoretic_profit") \
-    .fillna(0, subset=["ck_return_rate", "ck_net_margin", "ck_discount"])
-
-store_checkout_stats = store_checkout_stats.select(
-    col("store"),
-    col("checkout"),
-    col("window.start").alias("window_start"),
-    col("window.end").alias("window_end"),
-    col("region"),
-    col("loc_type"),
-    col("square_footage"),
-    col("checkout_type"),
-    col("checkout_department"),
-    col("ck_net_profit"),
-    col("ck_costs"),
-    col("ck_total_sales"),
-    col("ck_total_return"),
-    col("ck_discount"),
-    col("ck_return_rate"),
-    col("ck_net_margin")
-)
-
-# function to write batch in the databases
-def ch_payment(df_batch, epoch_id):
-    df_batch.write \
-        .format("clickhouse") \
-        .option("host", "clickhouse-gold") \
-        .option("port", "8123") \
-        .option("user", ch_user) \
-        .option("password", ch_pass) \
-        .option("database", "retail_stats") \
-        .option("table", "payment_analytics") \
-        .option("batchSize", "5000") \
-        .mode("append") \
-        .save()
-    
-payment_query = payment_stats.writeStream \
-    .outputMode("append") \
-    .foreachBatch(ch_payment) \
-    .option("checkpointLocation", "file:///app/checkpoints/gold/payments") \
-    .trigger(processingTime="15 seconds") \
-    .start()
-
-def ch_article(df_batch, epoch_id):
-    df_batch.write \
-        .format("clickhouse") \
-        .option("host", "clickhouse-gold") \
-        .option("port", "8123") \
-        .option("user", ch_user) \
-        .option("password", ch_pass) \
-        .option("database", "retail_stats") \
-        .option("table", "article_analytics") \
-        .option("batchSize", "5000") \
-        .mode("append") \
-        .save()
-
-article_store_query = article_stats.writeStream \
-    .outputMode("append") \
-    .foreachBatch(ch_article) \
-    .option("checkpointLocation", "file:///app/checkpoints/gold/articles/") \
-    .trigger(processingTime="15 seconds") \
-    .start()
-
-def ch_checkout(df_batch, epoch_id):
-    df_batch.write \
-        .format("clickhouse") \
-        .option("host", "clickhouse-gold") \
-        .option("port", "8123") \
-        .option("user", ch_user) \
-        .option("password", ch_pass) \
-        .option("database", "retail_stats") \
-        .option("table", "checkout_analytics") \
-        .option("batchSize", "5000") \
-        .mode("append") \
-        .save()
-
-store_checkout_query = store_checkout_stats.writeStream \
-    .outputMode("append") \
-    .foreachBatch(ch_checkout) \
-    .option("checkpointLocation", "file:///app/checkpoints/gold/checkouts/") \
-    .trigger(processingTime="15 seconds") \
+query_silver = silver_data.writeStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9094") \
+    .option("topic", "silver_data") \
+    .option("kafka.compression.type", "snappy") \
+    .option("checkpointLocation", "./checkpoints/silver_kafka") \
+    .trigger(processingTime="5 seconds") \
     .start()
 
 spark.streams.awaitAnyTermination()
