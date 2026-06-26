@@ -60,6 +60,7 @@ engineered_data = kafka_engineered_data \
 
 # check number of receipt for each type of payment in a given checkout / store (so we use receipt_data and not items_data), used to detect problem of a checkout of internet connection in a store
 payment_stats = receipt_data \
+    .withWatermark("timestamp", "2 minutes")\
     .groupBy(
         window(col("timestamp"), "1 minutes"),
         col("store"),
@@ -79,6 +80,7 @@ payment_stats = payment_stats.select(
 
 # check the article that is being more sold and the profit that it gives in a store at the moment, at the same time check the return rate on the articles (if too high it means that the product has some kind of difects)
 article_stats = engineered_data \
+    .withWatermark("timestamp", "2 minutes")\
     .groupBy(
         window(col("timestamp"), "1 minutes", "30 seconds"),
         col("category"),
@@ -114,6 +116,7 @@ article_stats = article_stats.select(
 # check the checkout and so even the store which is getting more profit and revenue at the moment, at the same moment we check the return rate (so that the manager can know if a cashier is a dodger)
 # we also check the payment methods (in this way we can notice if there could be some problem with card payments and other things)
 store_checkout_stats = engineered_data \
+    .withWatermark("timestamp", "2 minutes") \
     .groupBy(
         window(col("timestamp"), "1 minutes", "30 seconds"),
         col("store"),
